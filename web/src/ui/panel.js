@@ -6,7 +6,7 @@ import { icon } from './icons.js';
 import { lightColor } from '../three/lights.js';
 import { MODE_COLORS } from '../three/ac.js';
 import { AC_SWINGS } from '../store.js';
-import { haptic, isPhone } from '../bridge.js';
+import { haptic, isPhone, post } from '../bridge.js';
 
 const MODE_LABEL = { cool: 'Охлаждение', heat: 'Обогрев', dry: 'Осушение', fan: 'Вентиляция', auto: 'Авто' };
 const FAN_LABEL = { auto: 'Авто', low: 'Низкая', medium: 'Средняя', high: 'Высокая', turbo: 'Турбо' };
@@ -95,6 +95,8 @@ export function createPanel(root, config, store, { onFocus, onMenu }) {
       haptic('tick');
       labelsOn = !labelsOn;
       try { localStorage.setItem('house.climateLabels', labelsOn ? '1' : '0'); } catch { /* not remembered */ }
+      // Inside a sandboxed frame there is no storage: the host remembers it instead.
+      post('prefs', { climateLabels: labelsOn });
       update();
     },
   }, icon('thermo', 15, 2));
@@ -182,6 +184,7 @@ export function createPanel(root, config, store, { onFocus, onMenu }) {
     id = config.rooms.find((r) => r.id === id)?.part ?? id;
     if (ui.room === id) id = 'all';
     ui.room = id;
+    post('prefs', { room: id });
     layoutTiles();
     update();
     roomButtons.get(id).b.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
@@ -706,6 +709,12 @@ export function createPanel(root, config, store, { onFocus, onMenu }) {
     /** The model went to another floor by itself (a room or a device on it was picked). */
     levelShown,
     viewMoved(moved) { viewReset.classList.toggle('show', moved); },
+    // Settings the host kept from an earlier visit: the climate chips and the room last looked at.
+    setPrefs(prefs = {}) {
+      if (typeof prefs.climateLabels === 'boolean' && prefs.climateLabels !== labelsOn) { labelsOn = prefs.climateLabels; update(); }
+      const room = config.rooms.find((r) => r.id === prefs.room && r.part == null);
+      if (room && ui.room === 'all') selectRoom(room.id);
+    },
     placeLabels,
     showTooltip,
     openSheet,

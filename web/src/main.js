@@ -161,6 +161,7 @@ async function boot() {
     window.addEventListener('pointercancel', () => { edge = null; }, true);
   }
   incoming.applyRemote = (update) => store.applyRemote(update);
+  incoming.setPrefs = (prefs) => panel.setPrefs(prefs);
   incoming.adopt = (state) => store.adopt(state);
   incoming.share = () => store.share();
   // Widgets and controls: what they changed while the app was away is run here, where it

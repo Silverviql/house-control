@@ -492,6 +492,8 @@ html.native .card { width: auto; height: auto; box-shadow:
 }
 .tile-more:focus-visible { opacity: 1; }
 @media (hover: hover) { .tile:hover .tile-more { opacity: 1; } }
+/* No hover on a touch screen: the settings button is always there. */
+@media (hover: none) { .tile-more { opacity: 1; } }
 @media (hover: hover) { .tile-more:hover { background: rgba(255, 255, 255, 0.12); color: var(--text); } }
 
 .tile-level {

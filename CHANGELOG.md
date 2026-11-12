@@ -29,12 +29,20 @@ changes; the plan fields are in [docs/floor-plan.md](docs/floor-plan.md).
 - The weather outside and the pressure in mmHg under the home's name (`sensors` and `outdoor` in the plan).
 - A device's own thermometer (`sensor`) is shown on its tile, such as the water in a kettle.
 
+### Day and night
+
+- The model is lit by daylight while the sun is up and by the moon at night, easing through dusk and dawn
+  (`outdoor.sun` in the plan). The windows brighten by day.
+
 ### Panel
 
 - **Rooms of several rectangles** (`part`): one name, one tab and one group of devices.
 - **Light on / Light off** say what they do: they never touch appliances, blinds or heating.
 - The panel is in Russian.
 - Tiles show the icon of the device type.
+- On a touch screen the settings button of a tile is always shown (it used to appear only on hover).
+- A group of spots or a light line answers a tap only on its own pieces, so a chandelier hanging among the
+  spots can be tapped.
 
 ## 1.4.0 — in TestFlight
 

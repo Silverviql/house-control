@@ -136,8 +136,10 @@ export function createWorld(canvas, config, store, { onHover, onPick, onLevel = 
     moon.position.set(center.x + x * c + z * s, level.elevation + 10, center.z + z * c - x * s);
   }
 
-  // Night-time ambience: enough to read the model with every lamp off.
-  scene.add(new THREE.HemisphereLight(0x8ea6ff, 0x0b0e17, 0.42));
+  // Night-time ambience: enough to read the model with every lamp off. By day (see daylight below)
+  // the same lights turn into sky light and sunshine.
+  const sky = new THREE.HemisphereLight(0x8ea6ff, 0x0b0e17, 0.42);
+  scene.add(sky);
   const moon = new THREE.DirectionalLight(0xa9c0ff, 0.6);
   moon.castShadow = true;
   moon.shadow.mapSize.set(2048, 2048);
@@ -151,6 +153,51 @@ export function createWorld(canvas, config, store, { onHover, onPick, onLevel = 
   moon.shadow.normalBias = 0.04;
   moon.shadow.radius = 4;
   scene.add(moon, moon.target);
+
+  /* ---------- day and night ---------- */
+
+  // 0 is night, 1 full day. It follows the sun's elevation when the platform reports it
+  // (outdoor.sunElevation), easing through dusk and dawn; without it the home stays at night.
+  const NIGHT = {
+    sky: new THREE.Color(0x8ea6ff), ground: new THREE.Color(0x0b0e17), skyI: 0.42,
+    sun: new THREE.Color(0xa9c0ff), sunI: 0.6, bg: new THREE.Color(background),
+    glass: new THREE.Color('#3d5fae'), glassI: 0.5,
+  };
+  const DAY = {
+    sky: new THREE.Color(0xeaf1ff), ground: new THREE.Color(0x6a5d4d), skyI: 1.25,
+    sun: new THREE.Color(0xfff1dc), sunI: 1.9, bg: new THREE.Color('#2d3a52'),
+    glass: new THREE.Color('#d6e8ff'), glassI: 0.9,
+  };
+  function daylightGoal() {
+    const e = store.state.climate?.outdoor?.sunElevation;
+    return typeof e === 'number' ? clamp((e + 4) / 10, 0, 1) : 0; // civil dusk at -4°, full day from +6°
+  }
+  let daylight = daylightGoal();
+  function writeDaylight() {
+    const t = daylight;
+    sky.color.copy(NIGHT.sky).lerp(DAY.sky, t);
+    sky.groundColor.copy(NIGHT.ground).lerp(DAY.ground, t);
+    sky.intensity = NIGHT.skyI + (DAY.skyI - NIGHT.skyI) * t;
+    moon.color.copy(NIGHT.sun).lerp(DAY.sun, t);
+    moon.intensity = NIGHT.sunI + (DAY.sunI - NIGHT.sunI) * t;
+    scene.background.copy(NIGHT.bg).lerp(DAY.bg, t);
+    for (const { house } of floors.values()) {
+      house.glass.emissive.copy(NIGHT.glass).lerp(DAY.glass, t);
+      house.glass.emissiveIntensity = NIGHT.glassI + (DAY.glassI - NIGHT.glassI) * t;
+    }
+  }
+  function updateDaylight(dt) {
+    const goal = daylightGoal();
+    if (Math.abs(goal - daylight) < 0.002) {
+      if (daylight === goal) return false;
+      daylight = goal;
+    } else {
+      daylight += (goal - daylight) * (1 - Math.exp(-dt * 1.5));
+    }
+    writeDaylight();
+    return true;
+  }
+  writeDaylight();
 
   /* ---------- post-processing ---------- */
 
@@ -313,7 +360,8 @@ export function createWorld(canvas, config, store, { onHover, onPick, onLevel = 
   }
 
   const unsubscribe = store.on((change) => {
-    if (change.type === 'tick' || change.type === 'climate') return;
+    if (change.type === 'climate') { wake(); return; }
+    if (change.type === 'tick') return;
     if (change.type === 'light') lights.get(change.id).apply(store.state.lights[change.id]);
     else if (change.type === 'ac') acs.get(change.id).apply(store.state.acs[change.id]);
     else syncAll();
@@ -526,6 +574,7 @@ export function createWorld(canvas, config, store, { onHover, onPick, onLevel = 
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     let active = updateRig(dt);
+    active = updateDaylight(dt) || active;
     active = updateWalls(dt) || active;
     for (const unit of lights.values()) active = unit.update(dt) || active;
     for (const unit of acs.values()) active = unit.update(dt) || active;

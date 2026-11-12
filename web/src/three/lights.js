@@ -1,6 +1,7 @@
 // Light fixtures: a small model, the real three.js light(s) it drives and the
 // animation that eases both towards the device state.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { box, cyl, mat, at } from './kit.js';
 
 const STOPS = [
@@ -113,7 +114,8 @@ const fixtures = {
     return {
       parts, glow, lights,
       hit: [Math.max(...xs) - Math.min(...xs) + 0.4, 0.3, Math.max(...zs) - Math.min(...zs) + 0.4, y],
-      hitAt: [(Math.max(...xs) + Math.min(...xs)) / 2, (Math.max(...zs) + Math.min(...zs)) / 2],
+      // Only the spots themselves answer a tap: a lamp hanging between them (a chandelier) stays reachable.
+      hitBoxes: local.map(([x, z]) => [0.42, 0.3, 0.42, x, z, 0]),
       // Grown as one piece the spots would slide apart; each stays where it is drawn.
       rigid: true,
     };
@@ -237,7 +239,8 @@ const fixtures = {
     return {
       parts: [], glow, lights,
       hit: [Math.max(...xs) - Math.min(...xs) + 0.3, 0.4, Math.max(...zs) - Math.min(...zs) + 0.3, y],
-      hitAt: [(Math.max(...xs) + Math.min(...xs)) / 2, (Math.max(...zs) + Math.min(...zs)) / 2],
+      // A tap lands on the line itself, not on the box around all of its runs.
+      hitBoxes: runs.map((r) => [r.length + 0.2, 0.35, 0.3, (r.ax + r.bx) / 2, (r.az + r.bz) / 2, -Math.atan2(r.bz - r.az, r.bx - r.ax)]),
       rigid: true,
     };
   },
@@ -383,8 +386,12 @@ export class LightUnit {
     }
 
     const [hw, hh, hd, hy] = f.hit;
-    this.hit = new THREE.Mesh(new THREE.BoxGeometry(hw, hh, hd), new THREE.MeshBasicMaterial());
-    this.hit.position.set(f.hitAt?.[0] ?? 0, hy, f.hitAt?.[1] ?? 0);
+    // A fixture spread over a room (spots, a light line) is hit only on its own pieces.
+    const hitGeometry = f.hitBoxes
+      ? mergeGeometries(f.hitBoxes.map(([w, h, d, x, z, ry]) => new THREE.BoxGeometry(w, h, d).rotateY(ry).translate(x, 0, z)))
+      : new THREE.BoxGeometry(hw, hh, hd);
+    this.hit = new THREE.Mesh(hitGeometry, new THREE.MeshBasicMaterial());
+    this.hit.position.set(0, hy, 0);
     this.hit.visible = false;
     this.hit.userData = { kind: 'light', id: cfg.id };
     this.group.add(this.hit);

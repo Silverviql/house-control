@@ -261,6 +261,7 @@ The temperature and humidity of each room, and what is known about outside:
 ],
 "outdoor": {
   "weather": "weather.forecast_home",          // temperature, humidity, pressure and the sky
+  "sun": "sun.sun",                            // day and night in the 3D model
   "pressure": "sensor.living_pressure"         // optional: a sensor of your own wins over the forecast
 }
 ```
@@ -270,6 +271,7 @@ The temperature and humidity of each room, and what is known about outside:
 | `sensors[].room` | The room (a room's `part` counts as the room) |
 | `sensors[].temperature`, `sensors[].humidity` | Entity ids; either may be left out |
 | `outdoor.weather` | A `weather.*` entity |
+| `outdoor.sun` | A `sun.*` entity (Home Assistant's `sun.sun`). Its elevation lights the model: daylight from 6° above the horizon, night from 4° below, dusk and dawn in between. Without it the model stays at night |
 | `outdoor.temperature`, `outdoor.humidity`, `outdoor.pressure` | Optional `sensor.*` entities that replace the forecast's values |
 
 The values are shown as chips over the rooms in the 3D view (a button beside the model hides them), next to each

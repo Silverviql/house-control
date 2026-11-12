@@ -186,6 +186,7 @@ export function buildHouse(config, level = config.levels[0]) {
   return {
     group,
     floors,
+    glass,
     // The camera looks from (dx, dz), a horizontal unit vector. The first call sets the walls at once.
     view(dx, dz) {
       for (const side of sides.values()) {

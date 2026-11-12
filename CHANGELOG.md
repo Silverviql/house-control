@@ -34,6 +34,14 @@ changes; the plan fields are in [docs/floor-plan.md](docs/floor-plan.md).
 - The model is lit by daylight while the sun is up and by the moon at night, easing through dusk and dawn
   (`outdoor.sun` in the plan). The windows brighten by day.
 
+### Editor
+
+- Opens inside a host page (the Home Assistant card) with a Close button; one bundle, no lazy files.
+- **Groups of spots:** dragged as one, each spot by its own dot; add and remove spots.
+- **Light lines:** a dot on every corner; add corners and separate runs, or make a line straight again.
+- **Appliances, underfloor heating, lamps behind a shared switch** in the inspector.
+- **Pieces of a room** (“Part of”), each room's **climate sensors**, and the **weather, sun and pressure** outside.
+
 ### Panel
 
 - **Rooms of several rectangles** (`part`): one name, one tab and one group of devices.

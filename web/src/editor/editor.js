@@ -3,7 +3,7 @@
 // real devices. On a phone the same pieces are laid out for a finger: the plan fills the
 // screen, the inspector is a sheet from the bottom, pinch zooms and drag pans.
 import './editor.css';
-import { normalize, loadRawConfig, LIGHT_KINDS, FLOOR_KINDS, isLinked, levelsOf } from '../config.js';
+import { normalize, loadRawConfig, LIGHT_KINDS, FLOOR_KINDS, APPLIANCE_TYPES, isLinked, levelsOf } from '../config.js';
 import { createWorld } from '../three/world.js';
 import { FURNITURE_TYPES, footprint } from '../three/furniture.js';
 import { h, clamp } from '../ui/dom.js';
@@ -34,6 +34,18 @@ const REGIONS = [
 
 const round = (v, step = 0.05) => Math.round(v / step) * step;
 const fix = (v) => Math.round(v * 1000) / 1000;
+// Everything of a light that has a place on the plan: its handle, the spots of a group, the runs of a line.
+const shapeOf = (l) => ({ pos: [...l.pos], points: l.points?.map((q) => [...q]), paths: l.paths?.map((path) => path.map((q) => [...q])) });
+function shiftLight(l, base, dx, dz) {
+  const move = ([x, z]) => [fix(x + dx), fix(z + dz)];
+  l.pos = move(base.pos);
+  if (base.points) l.points = base.points.map(move);
+  if (base.paths) l.paths = base.paths.map((path) => path.map(move));
+}
+const middleOf = (pts) => [0, 1].map((i) => fix(pts.reduce((sum, q) => sum + q[i], 0) / pts.length));
+const isShaped = (l) => (l.type === 'downlights' && Array.isArray(l.points)) || (l.type === 'strip' && Array.isArray(l.paths));
+// Fixtures drawn as a bar of their width on the plan (they hang on a wall or run along it).
+const BAR_WIDTH = { towelRail: 0.5, blind: 1.2 };
 const slug = (t) => String(t).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'item';
 
 export async function bootEditor(root) {
@@ -517,9 +529,10 @@ export async function bootEditor(root) {
   /* ---------- sidebar ---------- */
 
   function rowLabel(kind, item) {
+    if (kind === 'room' && item.part) return [`↳ ${roomName(item.part)}`, `${fix(item.rect[2])} × ${fix(item.rect[3])} m`];
     if (kind === 'room') return [item.name || item.id, `${fix(item.rect[2])} × ${fix(item.rect[3])} m`];
     if (kind === 'light') return [item.name || item.id, `${roomName(item.room)} · ${item.type}`];
-    if (kind === 'ac') return [item.name || item.id, `${roomName(item.room)} · ${item.wall} wall`];
+    if (kind === 'ac') return [item.name || item.id, item.type === 'floor' ? `${roomName(item.room)} · underfloor` : `${roomName(item.room)} · ${item.wall} wall`];
     if (kind === 'furniture') return [item.type, roomName(roomAt(item.pos)?.id) || '—'];
     if (kind === 'opening' && !item.to) return [item.type || 'door', ''];
     if (kind === 'opening') return [item.type || 'door', `${fix(Math.hypot(item.to[0] - item.from[0], item.to[1] - item.from[1]))} m`];
@@ -631,7 +644,7 @@ export async function bootEditor(root) {
       if (kind === 'ac') {
         const along = item.wall === 'north' || item.wall === 'south' ? 0 : 1;
         copy.pos[along] = fix(copy.pos[along] + 1.1);
-      } else copy.pos = [fix(item.pos[0] + 0.5), fix(item.pos[1])];
+      } else shiftLight(copy, shapeOf(item), 0.5, 0);
     } else if (kind === 'furniture') {
       copy.pos = [fix(item.pos[0] + 0.4), fix(item.pos[1] + 0.4)];
     } else if (kind === 'opening') {
@@ -732,12 +745,17 @@ export async function bootEditor(root) {
     doc.rooms = doc.rooms.filter((r) => !ids.has(r.id));
     doc.lights = doc.lights.filter((l) => !ids.has(l.room));
     doc.acs = doc.acs.filter((a) => !ids.has(a.room));
+    // Its pieces go with it, and so do its climate sensors.
+    doc.rooms = doc.rooms.filter((r) => !ids.has(r.part));
+    if (Array.isArray(doc.sensors)) doc.sensors = doc.sensors.filter((x) => !ids.has(x.room));
     forgetDevices();
   }
 
   // Scenes let go of devices that are gone.
   function forgetDevices() {
     const ids = new Set([...doc.lights, ...doc.acs].map((d) => d.id));
+    // A lamp whose switch is gone is on its own switch again.
+    for (const l of doc.lights) if (l.power != null && !ids.has(l.power)) delete l.power;
     for (const sc of doc.scenes) {
       for (const map of [sc.lights, sc.acs]) for (const id of Object.keys(map || {})) if (id !== '*' && !ids.has(id)) delete map[id];
     }
@@ -853,8 +871,18 @@ export async function bootEditor(root) {
         transform: `translate(${l.pos[0]} ${l.pos[1]}) rotate(${-(l.rot || 0)})`,
       });
       if (big) g.append(sv('circle', { r: 0.58, class: 'hit' }));
-      if (l.type === 'strip') {
-        const len = l.length || 1;
+      if (l.type === 'downlights' && Array.isArray(l.points)) {
+        // Every spot of the group where it is; the group is picked up by any of them.
+        for (const [x, z] of l.points) {
+          g.append(sv('circle', { cx: x - l.pos[0], cy: z - l.pos[1], r: 0.2, class: 'halo' }), sv('circle', { cx: x - l.pos[0], cy: z - l.pos[1], r: 0.11 }));
+        }
+      } else if (l.type === 'strip' && Array.isArray(l.paths)) {
+        for (const path of l.paths) {
+          const d = path.map(([x, z], k) => `${k ? 'L' : 'M'}${fix(x - l.pos[0])} ${fix(z - l.pos[1])}`).join('');
+          g.append(sv('path', { d, class: 'line-hit' }), sv('path', { d, class: 'line' }));
+        }
+      } else if (l.type === 'strip' || l.type in BAR_WIDTH) {
+        const len = l.type === 'strip' ? (l.length || 1) : (l.width || BAR_WIDTH[l.type]);
         g.append(sv('rect', { x: -len / 2, y: -0.07, width: len, height: 0.14, rx: 0.07 }));
       } else {
         g.append(sv('circle', { r: 0.34, class: 'halo' }), sv('circle', { r: l.type === 'table' ? 0.13 : 0.19 }));
@@ -874,6 +902,17 @@ export async function bootEditor(root) {
         const attrs = { 'data-kind': 'resize', 'data-index': sel.index, 'data-handle': name };
         kids.push(sv('circle', { cx, cy: cz, r: reach, class: `hit grab ${name}`, ...attrs }),
           sv('circle', { cx, cy: cz, r: name.length === 2 ? r : r * 0.8, class: `p-handle ${name}`, ...attrs }));
+      }
+    }
+    // The spots of a selected group and the corners of a selected line each get a handle of their own.
+    const shaped = sel.kind === 'light' && doc.lights[sel.index];
+    if (shaped && isShaped(shaped) && here('light', shaped)) {
+      const dots = shaped.points ? shaped.points.map((q, k) => [q, `p:${k}`])
+        : shaped.paths.flatMap((path, a) => path.map((q, k) => [q, `v:${a}:${k}`]));
+      for (const [[cx, cz], handle] of dots) {
+        const attrs = { 'data-kind': 'lpoint', 'data-index': sel.index, 'data-handle': handle };
+        kids.push(sv('circle', { cx, cy: cz, r: reach, class: 'hit grab', ...attrs }),
+          sv('circle', { cx, cy: cz, r: r * 0.8, class: 'p-handle', ...attrs }));
       }
     }
     const open = sel.kind === 'opening' && doc.openings[sel.index];
@@ -1005,6 +1044,12 @@ export async function bootEditor(root) {
       drag = { kind, index, start, handle, rect: [...doc.rooms[index].rect] };
       return;
     }
+    if (kind === 'lpoint') {
+      const [, a, b] = handle.split(':').map(Number);
+      const l = doc.lights[index];
+      drag = { kind, index, start, handle, base: [...(handle[0] === 'p' ? l.points[a] : l.paths[a][b])] };
+      return;
+    }
     if (kind === 'oend') {
       const o = doc.openings[index];
       drag = { kind, index, start, handle, from: [...o.from], to: [...o.to] };
@@ -1019,7 +1064,7 @@ export async function bootEditor(root) {
       drag.rect = [...item.rect];
       // Everything standing in the room travels with it.
       drag.riders = [
-        ...doc.lights.filter((l) => l.room === item.id).map((o) => ({ o, pos: [...o.pos] })),
+        ...doc.lights.filter((l) => l.room === item.id).map((o) => ({ o, pos: [...o.pos], shape: shapeOf(o) })),
         ...doc.acs.filter((a) => a.room === item.id).map((o) => ({ o, pos: [...o.pos] })),
         ...doc.furniture.filter((f) => Array.isArray(f.pos) && here('furniture', f) && inside(f.pos)).map((o) => ({ o, pos: [...o.pos] })),
       ];
@@ -1030,6 +1075,7 @@ export async function bootEditor(root) {
       drag.to = [...item.to];
     } else {
       drag.pos = [...item.pos];
+      if (kind === 'light') drag.shape = shapeOf(item);
     }
   }
 
@@ -1074,6 +1120,13 @@ export async function bootEditor(root) {
       if (hd.includes('n')) z0 = Math.min(edge(z + pz - drag.start[1], lines.zs, 'z'), z1 - MIN_ROOM);
       if (hd.includes('s')) z1 = Math.max(edge(z + d + pz - drag.start[1], lines.zs, 'z'), z0 + MIN_ROOM);
       item.rect = [fix(x0), fix(z0), fix(x1 - x0), fix(z1 - z0)];
+    } else if (drag.kind === 'lpoint') {
+      // One spot of a group, or one corner of a line. The handle of the whole follows to their middle.
+      const l = doc.lights[drag.index];
+      const [, a, b] = drag.handle.split(':').map(Number);
+      const next = [fix(drag.base[0] + dx), fix(drag.base[1] + dz)];
+      if (drag.handle[0] === 'p') l.points[a] = next; else l.paths[a][b] = next;
+      l.pos = middleOf(l.points || l.paths.flat());
     } else if (drag.kind === 'oend') {
       const o = doc.openings[drag.index];
       const alongX = drag.from[1] === drag.to[1];
@@ -1097,7 +1150,10 @@ export async function bootEditor(root) {
       }
       item.rect[0] = fix(x + mx);
       item.rect[1] = fix(z + mz);
-      for (const r of drag.riders) r.o.pos = [fix(r.pos[0] + mx), fix(r.pos[1] + mz)];
+      for (const r of drag.riders) {
+        if (r.shape) shiftLight(r.o, r.shape, mx, mz);
+        else r.o.pos = [fix(r.pos[0] + mx), fix(r.pos[1] + mz)];
+      }
       for (const r of drag.openings) {
         r.o.from = [fix(r.from[0] + mx), fix(r.from[1] + mz)];
         r.o.to = [fix(r.to[0] + mx), fix(r.to[1] + mz)];
@@ -1114,7 +1170,8 @@ export async function bootEditor(root) {
       snapAC(doc.acs[drag.index], [px, pz]);
     } else {
       const item = doc[KEYS[drag.kind]][drag.index];
-      item.pos = [fix(drag.pos[0] + dx), fix(drag.pos[1] + dz)];
+      if (drag.shape) shiftLight(item, drag.shape, dx, dz);
+      else item.pos = [fix(drag.pos[0] + dx), fix(drag.pos[1] + dz)];
       if (drag.kind === 'light') {
         const room = roomAt(item.pos);
         if (room) item.room = room.id;
@@ -1208,6 +1265,27 @@ export async function bootEditor(root) {
   // Linking to a real device: links.deviceSection / links.sensorSection (connections.js).
   const linkHooks = { snapshot: () => snapshot(), changed: (note) => { touch(); if (note) toast(note); } };
 
+  // A reading the plan shows but never commands: picked from the connected platform's entities.
+  const reads = (obj, key) => (id) => { snapshot(); if (id) obj[key] = id; else delete obj[key]; touch({ inspector: true }); };
+  function outdoorField(label, key, deviceKind, none = 'None') {
+    return links.entityField(label, deviceKind, doc.outdoor?.[key], (id) => {
+      doc.outdoor ||= {};
+      reads(doc.outdoor, key)(id);
+      if (!Object.keys(doc.outdoor).length) delete doc.outdoor;
+    }, none);
+  }
+  // The climate sensors of a room live in "sensors": [{ room, temperature, humidity }].
+  function roomSensorField(label, room, key, deviceKind) {
+    const entry = () => (doc.sensors || []).find((x) => x.room === room.id);
+    return links.entityField(label, deviceKind, entry()?.[key], (id) => {
+      doc.sensors ||= [];
+      if (!entry()) doc.sensors.push({ room: room.id });
+      reads(entry(), key)(id);
+      doc.sensors = doc.sensors.filter((x) => x.temperature || x.humidity);
+      if (!doc.sensors.length) delete doc.sensors;
+    });
+  }
+
   function renderInspector() {
     const kind = sel.kind;
     const item = sel.index != null ? doc[KEYS[kind]]?.[sel.index] : null;
@@ -1224,6 +1302,11 @@ export async function bootEditor(root) {
         row(bind('Wall height, m', number(0.1), { ...prop(doc, 'wallHeight', 2.6), parse: parseNum }),
           bind('Inner walls shown, m', number(0.05), { ...prop(doc, 'interiorWallHeight', 1.25), parse: parseNum })),
         bind('Outdoor temperature, °C', number(1), { ...prop(doc, 'outdoorTemp', 27), parse: parseNum })),
+      section('Outside',
+        outdoorField('Weather', 'weather', 'weather'),
+        outdoorField('Sun (day and night)', 'sun', 'sun'),
+        outdoorField('Pressure sensor', 'pressure', 'pressure', 'From the weather'),
+        h('p.note', 'Shown under the home’s name. The sun lights the model by day; without it the home stays at night.')),
       section('Default camera',
         row(bind('Azimuth, °', number(1), { ...prop(doc.camera, 'azimuth', 34), parse: parseNum }),
           bind('Elevation, °', number(1), { ...prop(doc.camera, 'elevation', 47), parse: parseNum })),
@@ -1299,9 +1382,26 @@ export async function bootEditor(root) {
           list.length > 1 ? bind('On floor', choice(list.map((l) => [l.id, l.name])), {
             get: () => item.level ?? firstLevel(), set: (v) => moveRoomToLevel(sel.index, v), event: 'change',
           }) : null),
+        doc.rooms.some((r) => r.part === item.id) ? null
+          : bind('Part of', choice([['', 'A room of its own'], ...doc.rooms.filter((r) => r !== item && !r.part).map((r) => [r.id, r.name || r.id])]), {
+            get: () => item.part ?? '',
+            set: (v) => {
+              if (!v) { delete item.part; return; }
+              item.part = v;
+              // A piece has no devices or sensors of its own: they belong to the room it joins.
+              for (const d of [...doc.lights, ...doc.acs]) if (d.room === item.id) d.room = v;
+              if (Array.isArray(doc.sensors)) doc.sensors = doc.sensors.filter((x) => x.room !== item.id);
+            },
+            event: 'change',
+          }),
+        item.part ? h('p.note', 'A piece of another room: it shares that room’s name, tab and devices. Leave an “open” gap where the two meet.') : null,
         h('div.fields',
           h('button.btn', { onclick: () => splitRoom(sel.index) }, icon('split', 14, 2.2), 'Split in two'),
           h('button.btn', { onclick: duplicate }, icon('duplicate', 14, 2.2), 'Duplicate'))),
+      item.part ? null : section('Climate',
+        roomSensorField('Temperature', item, 'temperature', 'sensor'),
+        roomSensorField('Humidity', item, 'humidity', 'humidity'),
+        h('p.note', 'Shown over the room in the 3D view and next to its name in the list.')),
       section('Position & size, m',
         row(bind('X', number(0.1), { ...at(item, 'rect', 0), parse: parseNum }), bind('Z', number(0.1), { ...at(item, 'rect', 1), parse: parseNum })),
         row(bind('Width', number(0.1), { ...at(item, 'rect', 2), parse: parseNum }), bind('Depth', number(0.1), { ...at(item, 'rect', 3), parse: parseNum })),
@@ -1314,37 +1414,116 @@ export async function bootEditor(root) {
         get: () => item.capabilities.includes(name),
         set: (on) => { item.capabilities = item.capabilities.filter((c) => c !== name); if (on) item.capabilities.push(name); },
       });
-      nodes.push(section('Light',
+      const appliance = APPLIANCE_TYPES.includes(item.type);
+      const shaped = isShaped(item);
+      const reshape = (fn) => () => { snapshot(); fn(); item.pos = middleOf(item.points || item.paths?.flat() || [item.pos]); touch({ inspector: true }); };
+      const setType = (v) => {
+        item.type = v;
+        // A group of spots starts as the one spot it stood for; other fixtures have no spots or runs.
+        if (v === 'downlights') item.points ||= [[...item.pos]]; else delete item.points;
+        if (v !== 'strip') delete item.paths;
+        if (APPLIANCE_TYPES.includes(v) || v === 'downlights') item.capabilities = [];
+      };
+      const feeders = doc.lights.filter((l) => l !== item && l.power == null && !doc.lights.some((x) => x.power === item.id));
+      nodes.push(section(appliance ? 'Appliance' : 'Light',
         bind('Name', text(), prop(item, 'name', '')),
-        row(bind('Room', choice(doc.rooms.map((r) => [r.id, r.name || r.id])), { ...prop(item, 'room'), event: 'change' }),
-          bind('Fixture', choice(LIGHT_KINDS), { ...prop(item, 'type'), event: 'change' }))),
-      section('Position, m',
-        row(bind('X', number(), { ...at(item, 'pos', 0), parse: parseNum }), bind('Z', number(), { ...at(item, 'pos', 1), parse: parseNum })),
+        row(bind('Room', choice(doc.rooms.filter((r) => !r.part).map((r) => [r.id, r.name || r.id])), { ...prop(item, 'room'), event: 'change' }),
+          bind('Fixture', choice(LIGHT_KINDS), { get: () => item.type, set: setType, event: 'change' })),
+        appliance || !feeders.length ? null : bind('Switched by', choice([['', 'Its own switch'], ...feeders.map((l) => [l.id, `${l.name || l.id} — ${roomName(l.room)}`])]),
+          { ...optional(item, 'power'), event: 'change' }),
+        item.power ? h('p.note', 'A smart lamp behind that light’s wall switch: dark while the switch is off, on with it.') : null),
+      item.type === 'downlights' && shaped ? section(`Spots · ${item.points.length}`,
+        h('div.fields',
+          h('button.btn', { onclick: reshape(() => { const [x, z] = item.points[item.points.length - 1]; item.points.push([fix(x + 0.6), z]); }) }, icon('plus', 14, 2.2), 'Add a spot'),
+          item.points.length > 1 ? h('button.btn', { onclick: reshape(() => { item.points.pop(); }) }, icon('minus', 14, 2.2), 'Remove last') : null),
+        h('p.note', 'One switch for all of them. Drag the group by any spot; select it, then drag a single spot by its dot.')) : null,
+      item.type === 'strip' ? section('Line',
+        shaped ? h('div.fields',
+          h('button.btn', { onclick: reshape(() => {
+            const path = item.paths[item.paths.length - 1];
+            const [[ax, az], [bx, bz]] = path.slice(-2);
+            const len = Math.hypot(bx - ax, bz - az) || 1;
+            // The next run turns the corner: a right angle off the last one.
+            path.push([fix(bx - (bz - az) / len * 0.8), fix(bz + (bx - ax) / len * 0.8)]);
+          }) }, icon('plus', 14, 2.2), 'Add a corner'),
+          h('button.btn', { onclick: reshape(() => {
+            const path = item.paths[item.paths.length - 1];
+            if (path.length > 2) path.pop(); else if (item.paths.length > 1) item.paths.pop();
+          }) }, icon('minus', 14, 2.2), 'Remove last'))
+          : bind('Strip length, m', number(0.1), { ...prop(item, 'length', 1), parse: parseNum }),
+        shaped ? h('div.fields',
+          h('button.btn', { onclick: reshape(() => { const [x, z] = item.paths[item.paths.length - 1].slice(-1)[0]; item.paths.push([[fix(x + 0.5), fix(z + 0.5)], [fix(x + 1.5), fix(z + 0.5)]]); }) }, 'Add a separate run'),
+          h('button.btn', { onclick: reshape(() => {
+            const [[ax, az], [bx, bz]] = item.paths[0];
+            item.length = fix(Math.hypot(bx - ax, bz - az)) || 1;
+            item.rot = Math.round(-Math.atan2(bz - az, bx - ax) * 180 / Math.PI);
+            item.pos = [fix((ax + bx) / 2), fix((az + bz) / 2)];
+            delete item.paths;
+          }) }, 'Make it straight'))
+          : h('button.btn.wide', { onclick: reshape(() => {
+            const a = -(item.rot || 0) * Math.PI / 180;
+            const half = (item.length || 1) / 2;
+            const [x, z] = item.pos;
+            item.paths = [[[fix(x - Math.cos(a) * half), fix(z - Math.sin(a) * half)], [fix(x + Math.cos(a) * half), fix(z + Math.sin(a) * half)]]];
+            delete item.rot; delete item.length;
+          }) }, 'Give it corners'),
+        shaped ? h('p.note', 'One switch for the whole line. Select it, then drag its corners by their dots.') : null) : null,
+      section(shaped ? 'Height, m' : 'Position, m',
+        shaped ? null : row(bind('X', number(), { ...at(item, 'pos', 0), parse: parseNum }), bind('Z', number(), { ...at(item, 'pos', 1), parse: parseNum })),
         row(bind('Height (auto if empty)', number(), { ...optional(item, 'y'), parse: optNum }),
-          bind('Rotation, °', number(15), { ...prop(item, 'rot', 0), parse: parseNum })),
-        item.type === 'strip' ? bind('Strip length, m', number(0.1), { ...prop(item, 'length', 1), parse: parseNum }) : null),
-      section('What it can do',
+          shaped || ['downlights', 'fan', 'kettle'].includes(item.type) ? null : bind('Rotation, °', number(15), { ...prop(item, 'rot', 0), parse: parseNum })),
+        item.type in BAR_WIDTH ? row(bind('Width, m', number(0.1), { ...optional(item, 'width'), parse: optNum }),
+          bind(item.type === 'blind' ? 'Drop, m' : 'Height of it, m', number(0.1), { ...optional(item, 'height'), parse: optNum })) : null,
+        item.type === 'blind' ? h('p.note', 'Height is the top of the window; the drop is how far the cloth hangs when closed.') : null),
+      appliance ? section('Its thermometer',
+        links.entityField('Temperature', 'sensor', item.sensor?.id, (id) => {
+          snapshot();
+          if (id) item.sensor = { service: 'homeassistant', id }; else delete item.sensor;
+          touch({ inspector: true });
+        }),
+        h('p.note', 'Shown on its tile: the water in a kettle, a towel rail.')) : null,
+      appliance || item.type === 'downlights' ? null : section('What it can do',
         h('div.checks',
           bind('Dimming', h('input', { type: 'checkbox' }), { ...cap('brightness'), event: 'change' }),
           bind('White temperature', h('input', { type: 'checkbox' }), { ...cap('temp'), event: 'change' }),
           bind('Colour', h('input', { type: 'checkbox' }), { ...cap('color'), event: 'change' })),
         h('p.note', 'Leave all three off for a lamp on a plain smart plug: it is then a simple on/off switch.')),
-      links.deviceSection(item, 'light', linkHooks));
+      links.deviceSection(item, item.type === 'blind' ? 'cover' : item.type === 'vacuum' ? 'vacuum' : 'light', linkHooks));
     } else if (kind === 'ac') {
       head(item.name || item.id, `id: ${item.id}`);
-      nodes.push(section('Air conditioner',
+      const floor = item.type === 'floor';
+      const centreIn = (id) => { const r = doc.rooms.find((x) => x.id === id); if (r) item.pos = [fix(r.rect[0] + r.rect[2] / 2), fix(r.rect[1] + r.rect[3] / 2)]; };
+      nodes.push(section(floor ? 'Underfloor heating' : 'Air conditioner',
         bind('Name', text(), prop(item, 'name', '')),
-        row(bind('Room', choice(doc.rooms.map((r) => [r.id, r.name || r.id])), { ...prop(item, 'room'), event: 'change' }),
-          bind('Mounted on wall', choice(WALLS), { ...prop(item, 'wall', 'north'), event: 'change' }))),
-      section('Position, m',
-        row(bind('X', number(), { ...at(item, 'pos', 0), parse: parseNum }), bind('Z', number(), { ...at(item, 'pos', 1), parse: parseNum })),
-        row(bind('Height', number(), { ...prop(item, 'y', 2.2), parse: parseNum }),
+        bind('Kind', choice([['wall', 'Unit on a wall'], ['floor', 'Underfloor heating']]), {
+          get: () => (floor ? 'floor' : 'wall'),
+          set: (v) => {
+            if (v === 'floor') {
+              item.type = 'floor';
+              delete item.wall; delete item.y;
+              if ((item.min ?? 16) === 16 && (item.max ?? 30) === 30) { item.min = 5; item.max = 35; }
+              centreIn(item.room);
+            } else {
+              delete item.type;
+              if (item.min === 5 && item.max === 35) { delete item.min; delete item.max; }
+              snapAC(item, item.pos);
+            }
+          },
+          event: 'change',
+        }),
+        row(bind('Room', choice(doc.rooms.filter((r) => !r.part).map((r) => [r.id, r.name || r.id])), {
+          get: () => item.room, set: (v) => { item.room = v; if (floor) centreIn(v); }, event: 'change',
+        }),
+          floor ? null : bind('Mounted on wall', choice(WALLS), { ...prop(item, 'wall', 'north'), event: 'change' }))),
+      section(floor ? 'Range' : 'Position, m',
+        floor ? null : row(bind('X', number(), { ...at(item, 'pos', 0), parse: parseNum }), bind('Z', number(), { ...at(item, 'pos', 1), parse: parseNum })),
+        row(floor ? null : bind('Height', number(), { ...prop(item, 'y', 2.2), parse: parseNum }),
           bind('Min / max °C', text(), {
-            get: () => `${item.min ?? 16}-${item.max ?? 30}`,
+            get: () => `${item.min ?? (floor ? 5 : 16)}-${item.max ?? (floor ? 35 : 30)}`,
             set: ([a, b]) => { item.min = a; item.max = b; },
             parse: (v) => { const m = /^(\d+)\s*-\s*(\d+)$/.exec(v.trim()); return m && +m[1] < +m[2] ? [+m[1], +m[2]] : undefined; },
           })),
-        h('p.note', 'Dragging the unit on the plan snaps it to the nearest wall of its room.')),
+        h('p.note', floor ? 'It heats the whole room: drop its mark in another room to move it there.' : 'Dragging the unit on the plan snaps it to the nearest wall of its room.')),
       links.deviceSection(item, 'ac', linkHooks),
       links.sensorSection(item, linkHooks));
     } else if (kind === 'furniture') {
@@ -1635,7 +1814,8 @@ export async function bootEditor(root) {
       remove(sel.kind, sel.index);
     } else if (ev.key.startsWith('Arrow') && sel.index != null) {
       const item = doc[KEYS[sel.kind]][sel.index];
-      const targets = item.from ? [item.from, item.to] : [item.pos || item.rect].filter(Boolean);
+      const targets = item.from ? [item.from, item.to]
+        : [item.pos || item.rect, ...(sel.kind === 'light' ? [...(item.points || []), ...(item.paths || []).flat()] : [])].filter(Boolean);
       if (!targets.length) return;
       ev.preventDefault();
       const stepSize = ev.shiftKey ? 0.5 : 0.05;

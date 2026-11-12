@@ -393,6 +393,25 @@ export function createConnections({ rerender, toast, usedBy, onOpen }) {
       h('p.note', 'A temperature sensor in the same room. Without one, the AC’s own reading is used, or the temperature is estimated.'));
   }
 
+  /**
+   * A plain entity of the connected platform that the plan only reads (a room's thermometer, the
+   * weather): a picker of the devices of that kind. `onPick(id)` gets the entity id, or '' for none.
+   */
+  function entityField(label, kind, currentId, onPick, none = 'None') {
+    if (!state.devices && !state.loading && anyConnected()) setTimeout(() => load({ quiet: true }), 0);
+    const select = h('select');
+    select.append(h('option', { value: '' }, none));
+    let found = false;
+    for (const d of (state.devices || []).filter((x) => x.kind === kind)) {
+      if (d.id === currentId) found = true;
+      select.append(h('option', { value: d.id }, optionLabel(d)));
+    }
+    if (currentId && !found) select.append(h('option', { value: currentId }, currentId));
+    select.value = currentId || '';
+    select.addEventListener('change', () => onPick(select.value));
+    return h('label.field', h('span', label), select);
+  }
+
   /** "id → plan item name" for every device the plan links, to mark them in the lists. */
   function usedMap(doc) {
     const out = new Map();
@@ -406,7 +425,7 @@ export function createConnections({ rerender, toast, usedBy, onOpen }) {
   }
 
   return {
-    state, load, refreshInfo, sidebarRow, overview, detail, tile, deviceSection, sensorSection, usedMap,
+    state, load, refreshInfo, sidebarRow, overview, detail, tile, deviceSection, sensorSection, entityField, usedMap,
     connected, stopPairing,
     title: (id) => SERVICES[id]?.name,
     blurb: (id) => LOOK[id]?.blurb,

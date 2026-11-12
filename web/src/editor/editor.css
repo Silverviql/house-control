@@ -555,3 +555,9 @@ html.ios.mode-editor body { background: var(--bg); }
 @media (prefers-reduced-motion: reduce) {
   .p-sheet, .p-modal, .editor.phone .canvas, .p-scrim { transition-duration: 1ms; }
 }
+
+/* ---------- ha-devices fork: spot groups and light lines ---------- */
+.p-light .line { fill: none; stroke: #ffd9a0; stroke-width: 0.12; stroke-linecap: round; stroke-linejoin: round; }
+.p-light.linked .line { stroke: #7ef0b0; }
+.p-light .line-hit { fill: none; stroke: transparent; stroke-width: 0.5; stroke-linecap: round; stroke-linejoin: round; pointer-events: stroke; }
+.p-light.sel .line { stroke: #fff; }

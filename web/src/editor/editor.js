@@ -40,6 +40,22 @@ export async function bootEditor(root) {
   let doc = structuredClone(await loadRawConfig());
   for (const key of Object.values(KEYS)) doc[key] ||= [];
 
+  // The plan may leave out a position the editor needs to draw and drag an item: underfloor
+  // heating sits at the middle of its room, a group of spots or a light line at the middle of its points.
+  function placeImplied(plan) {
+    for (const a of plan.acs) {
+      if (a.type !== 'floor' || Array.isArray(a.pos)) continue;
+      const r = plan.rooms.find((x) => x.id === a.room);
+      a.pos = r ? [fix(r.rect[0] + r.rect[2] / 2), fix(r.rect[1] + r.rect[3] / 2)] : [0, 0];
+    }
+    for (const l of plan.lights) {
+      if (Array.isArray(l.pos)) continue;
+      const pts = Array.isArray(l.points) ? l.points : Array.isArray(l.paths) ? l.paths.flat() : [];
+      l.pos = pts.length ? [0, 1].map((i) => fix(pts.reduce((sum, q) => sum + q[i], 0) / pts.length)) : [0, 0];
+    }
+  }
+  placeImplied(doc);
+
   // "connections", "service:smartlife|homeassistant|hue|homekit": where the editor opens
   // (HOUSE_OPEN_EDITOR, or the Mac's Settings window through incoming.openSection).
   const sectionSel = (at) => (at === 'connections' ? { kind: 'connections' }
@@ -80,6 +96,18 @@ export async function bootEditor(root) {
   nameInput.addEventListener('input', () => { snapshot('name'); doc.name = nameInput.value; touch({ inspector: sel.kind === 'home' }); });
   const status = h('div.status');
   const saveBtn = h('button.btn.primary', { onclick: save }, icon('check', 15, 2.4), 'Save & apply');
+  // Inside a host page (the Home Assistant card) the editor is an overlay that has to be closed
+  // from within. With edits not yet saved, the first press only warns.
+  const hosted = document.documentElement.classList.contains('embed');
+  let closeArmed = 0;
+  const closeBtn = h('button.btn', { onclick: () => {
+    if (dirty && Date.now() > closeArmed) {
+      closeArmed = Date.now() + 5000;
+      toast('There are unsaved changes — press Close again to discard them', true);
+      return;
+    }
+    post('close');
+  } }, 'Close');
   const hint = h('div.hint', 'Tap to select · drag what is selected · pinch to zoom');
   const levelBar = h('div.levels', { role: 'tablist', 'aria-label': 'Floors' });
   // An empty floor says how to start it.
@@ -101,7 +129,8 @@ export async function bootEditor(root) {
         h('button.btn', { title: 'Redo (⇧⌘Z)', onclick: () => stepHistory(redo, undo) }, 'Redo'),
         h('button.btn', { onclick: importPlan }, 'Import…'),
         h('button.btn', { onclick: exportPlan }, 'Export…'),
-        saveBtn)),
+        saveBtn,
+        hosted ? closeBtn : null)),
     sidebar,
     h('main.canvas', plan, levelBar, emptyCard, addBar(), zoomBar()),
     h('aside.right', h('div.preview-wrap', previewHost, previewToggle), inspector),
@@ -799,6 +828,16 @@ export async function bootEditor(root) {
     doc.acs.forEach((a, i) => {
       if (!here('ac', a)) return;
       const rot = { north: 0, east: 90, south: 180, west: 270 }[a.wall] || 0;
+      if (a.type === 'floor') {
+        // Underfloor heating: a mark in the middle of the room it warms, not a unit on a wall.
+        kids.push(sv('g', {
+          class: `p-ac${isSel('ac', i) ? ' sel' : ''}`, 'data-kind': 'ac', 'data-index': i,
+          transform: `translate(${a.pos[0]} ${a.pos[1]})`,
+        }, big ? sv('circle', { r: 0.58, class: 'hit' }) : null,
+          sv('circle', { r: 0.3 }),
+          sv('path', { d: 'M-0.16 -0.1q0.08 -0.08 0.16 0t0.16 0M-0.16 0.08q0.08 -0.08 0.16 0t0.16 0', class: 'flow' })));
+        return;
+      }
       kids.push(sv('g', {
         class: `p-ac${isSel('ac', i) ? ' sel' : ''}`, 'data-kind': 'ac', 'data-index': i,
         transform: `translate(${a.pos[0]} ${a.pos[1]}) rotate(${rot})`,
@@ -870,6 +909,12 @@ export async function bootEditor(root) {
     const room = roomAt([x, z]) || doc.rooms.find((r) => r.id === ac.room);
     if (!room) return;
     const [rx, rz, rw, rd] = room.rect;
+    if (ac.type === 'floor') {
+      // Dropped in a room, it becomes that room's heating.
+      ac.room = room.id;
+      ac.pos = [fix(rx + rw / 2), fix(rz + rd / 2)];
+      return;
+    }
     const options = [
       ['north', Math.abs(z - rz)], ['south', Math.abs(z - (rz + rd))],
       ['west', Math.abs(x - rx)], ['east', Math.abs(x - (rx + rw))],
@@ -1530,6 +1575,7 @@ export async function bootEditor(root) {
       snapshot();
       doc = json;
       for (const key of Object.values(KEYS)) doc[key] ||= [];
+      placeImplied(doc);
       nameInput.value = doc.name || 'Home';
       sel = { kind: 'home' };
       checkLevel();

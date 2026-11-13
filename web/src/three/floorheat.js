@@ -1,7 +1,11 @@
-// Underfloor heating: the room's floor shows the heating loop, glowing while it warms.
+// Underfloor heating: the room's floor shows the heating loop, always — blue while it is off or
+// resting, glowing warm while it heats.
 // It stands in for an AC unit in the scene (same interface as ACUnit), driven by a thermostat.
 import * as THREE from 'three';
 import { MODE_COLORS } from './ac.js';
+
+const COLD = new THREE.Color('#4f8dff');
+const WARM = new THREE.Color(MODE_COLORS.heat);
 
 // The loop as a texture: one serpentine pipe, drawn once per room size.
 function loopTexture(w, d) {
@@ -46,8 +50,9 @@ export class FloorHeat {
     this.group.position.set(room.x + room.w / 2, 0, room.z + room.d / 2);
 
     this.material = new THREE.MeshBasicMaterial({
-      map: loopTexture(w, d), color: MODE_COLORS.heat, transparent: true, opacity: 0,
-      blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+      // Drawn over the floor, not added to it: a pale tile by day would swallow an additive line.
+      map: loopTexture(w, d), color: COLD.clone(), transparent: true, opacity: 0.5,
+      depthWrite: false, toneMapped: false,
     });
     this.loop = new THREE.Mesh(new THREE.PlaneGeometry(w, d), this.material);
     this.loop.rotation.x = -Math.PI / 2;
@@ -96,8 +101,9 @@ export class FloorHeat {
     this.clock += dt;
 
     const breathe = 0.85 + 0.15 * Math.sin(this.clock * 1.4);
-    this.material.opacity = Math.min(1, this.standby * 0.12 + this.power * 0.6 * breathe + this.hover * 0.25);
-    this.loop.visible = this.material.opacity > 0.003;
+    // Off: the loop stays readable in blue. Switched on and resting: a little brighter. Heating: warm.
+    this.material.color.copy(COLD).lerp(WARM, this.power);
+    this.material.opacity = Math.min(1, 0.5 + this.standby * 0.12 + this.power * 0.3 * breathe + this.hover * 0.2);
     this.wash.intensity = this.power * 0.9 * breathe;
 
     const heating = this.power > 0.004;

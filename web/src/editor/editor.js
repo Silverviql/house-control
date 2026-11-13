@@ -49,6 +49,12 @@ const FURNITURE_RU = {
 };
 const OPENING_RU = { door: 'Дверь', open: 'Открытый проём', window: 'Окно' };
 const ICON_RU = { sun: 'Солнце', sofa: 'Диван', film: 'Кино', moon: 'Луна', door: 'Дверь', table: 'Стол', bed: 'Кровать', tv: 'ТВ', sparkles: 'Искры' };
+// A new device is just "a device" until it is given a type or a name of its own; while its name is still
+// one the editor gave it, changing its type renames it to match ("Полотенцесушитель", "Тёплый пол").
+const NEW_DEVICE = 'Новое устройство';
+const CLIMATE_RU = { wall: 'Кондиционер', floor: 'Тёплый пол' };
+const AUTO_NAMES = new Set([NEW_DEVICE, 'Новый светильник', 'Новый прибор', 'New light', ...Object.values(LIGHT_RU), ...Object.values(CLIMATE_RU)]);
+const renameFor = (item, label) => { if (!item.name || AUTO_NAMES.has(item.name)) item.name = label; };
 const labelled = (ids, names) => ids.map((id) => [id, names[id] || id]);
 
 const round = (v, step = 0.05) => Math.round(v / step) * step;
@@ -621,12 +627,12 @@ export async function bootEditor(root) {
     } else if (kind === 'light') {
       if (!room) return toast('Сначала добавьте комнату', true);
       // An appliance starts as a kettle; "Тип" in its settings turns it into a towel rail, a fan, a blind…
-      list.push(type ? { id: uniqueId(`${room.id}.${type}`), name: 'Новый прибор', room: room.id, type, pos: freeSpot(room, center), capabilities: [] }
-        : { id: uniqueId(`${room.id}.light`), name: 'Новый светильник', room: room.id, type: 'ceiling', pos: freeSpot(room, center), capabilities: [] });
+      list.push(type ? { id: uniqueId(`${room.id}.${type}`), name: NEW_DEVICE, room: room.id, type, pos: freeSpot(room, center), capabilities: [] }
+        : { id: uniqueId(`${room.id}.light`), name: NEW_DEVICE, room: room.id, type: 'ceiling', pos: freeSpot(room, center), capabilities: [] });
     } else if (kind === 'ac') {
       if (!room) return toast('Сначала добавьте комнату', true);
-      list.push(type === 'floor' ? { id: uniqueId(`${room.id}.floor`), name: 'Тёплый пол', room: room.id, type: 'floor', pos: center, min: 5, max: 35 }
-        : { id: uniqueId(`${room.id}.ac`), name: 'Кондиционер', room: room.id, wall: 'north', pos: [center[0], room.rect[1]], y: 2.2 });
+      list.push(type === 'floor' ? { id: uniqueId(`${room.id}.floor`), name: CLIMATE_RU.floor, room: room.id, type: 'floor', pos: center, min: 5, max: 35 }
+        : { id: uniqueId(`${room.id}.ac`), name: NEW_DEVICE, room: room.id, wall: 'north', pos: [center[0], room.rect[1]], y: 2.2 });
     } else if (kind === 'furniture') {
       list.push(stamp(type === 'stairs' ? { type, pos: center, rot: 0, width: 1, depth: 2.8 } : { type: type || 'sofa', pos: center, rot: 0 }));
     } else if (kind === 'opening') {
@@ -1446,6 +1452,7 @@ export async function bootEditor(root) {
       const reshape = (fn) => () => { snapshot(); fn(); item.pos = middleOf(item.points || item.paths?.flat() || [item.pos]); touch({ inspector: true }); };
       const setType = (v) => {
         item.type = v;
+        renameFor(item, LIGHT_RU[v] || v);
         // A group of spots starts as the one spot it stood for; other fixtures have no spots or runs.
         if (v === 'downlights') item.points ||= [[...item.pos]]; else delete item.points;
         if (v !== 'strip') delete item.paths;
@@ -1527,11 +1534,13 @@ export async function bootEditor(root) {
           set: (v) => {
             if (v === 'floor') {
               item.type = 'floor';
+              renameFor(item, CLIMATE_RU.floor);
               delete item.wall; delete item.y;
               if ((item.min ?? 16) === 16 && (item.max ?? 30) === 30) { item.min = 5; item.max = 35; }
               centreIn(item.room);
             } else {
               delete item.type;
+              renameFor(item, CLIMATE_RU.wall);
               if (item.min === 5 && item.max === 35) { delete item.min; delete item.max; }
               snapAC(item, item.pos);
             }

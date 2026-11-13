@@ -20,10 +20,10 @@ const sv = (tag, attrs = {}, ...kids) => {
 };
 
 const KEYS = { room: 'rooms', light: 'lights', ac: 'acs', furniture: 'furniture', opening: 'openings', scene: 'scenes' };
-const TITLES = { room: 'Rooms', light: 'Lights', ac: 'Air conditioners', furniture: 'Furniture', opening: 'Doors & windows', scene: 'Scenes' };
+const TITLES = { room: 'Комнаты', light: 'Свет и приборы', ac: 'Климат', furniture: 'Мебель', opening: 'Двери и окна', scene: 'Сцены' };
 const FLOOR_FILL = { oak: '#4a3d2e', walnut: '#3c2f28', tile: '#39424b', stone: '#30353c' };
 const WALLS = ['north', 'east', 'south', 'west'];
-const LEVEL_NAMES = ['Ground floor', 'First floor', 'Second floor', 'Third floor', 'Fourth floor', 'Fifth floor'];
+const LEVEL_NAMES = ['Первый этаж', 'Второй этаж', 'Третий этаж', 'Четвёртый этаж', 'Пятый этаж', 'Шестой этаж'];
 const HANDLES = { nw: [0, 0], n: [0.5, 0], ne: [1, 0], e: [1, 0.5], se: [1, 1], s: [0.5, 1], sw: [0, 1], w: [0, 0.5] };
 const MIN_ROOM = 0.6; // metres, either way
 const SCENE_ICONS = ['sun', 'sofa', 'film', 'moon', 'door', 'table', 'bed', 'tv', 'sparkles'];
@@ -31,6 +31,25 @@ const REGIONS = [
   ['eu', 'Central Europe'], ['eu-w', 'Western Europe'], ['us', 'Western America'], ['us-e', 'Eastern America'],
   ['cn', 'China'], ['in', 'India'], ['sg', 'Singapore'],
 ];
+
+// What the plan stores as English ids, as the editor shows it.
+const LIGHT_RU = {
+  ceiling: 'Потолочный', pendant: 'Подвес / люстра', spots: 'Планка с точками', downlights: 'Группа точек',
+  floor: 'Торшер', table: 'Настольный', strip: 'Лента / линия',
+  towelRail: 'Полотенцесушитель', fan: 'Вытяжка', kettle: 'Чайник', blind: 'Штора', vacuum: 'Пылесос',
+};
+const FLOOR_RU = { oak: 'Дуб', walnut: 'Орех', tile: 'Плитка', stone: 'Камень' };
+const WALL_RU = { north: 'Северная (верх)', east: 'Восточная (право)', south: 'Южная (низ)', west: 'Западная (лево)' };
+const FURNITURE_RU = {
+  rug: 'Ковёр', sofa: 'Диван', armchair: 'Кресло', coffeeTable: 'Журнальный столик', tv: 'Телевизор',
+  sideboard: 'Тумба', diningSet: 'Обеденный стол', island: 'Кухонный остров', kitchen: 'Кухонный гарнитур',
+  fridge: 'Холодильник', bed: 'Кровать', nightstand: 'Тумбочка', dresser: 'Комод', plant: 'Растение',
+  vanity: 'Раковина с тумбой', bathtub: 'Ванна', toilet: 'Унитаз', desk: 'Письменный стол',
+  wardrobe: 'Шкаф', bookshelf: 'Стеллаж', stairs: 'Лестница',
+};
+const OPENING_RU = { door: 'Дверь', open: 'Открытый проём', window: 'Окно' };
+const ICON_RU = { sun: 'Солнце', sofa: 'Диван', film: 'Кино', moon: 'Луна', door: 'Дверь', table: 'Стол', bed: 'Кровать', tv: 'ТВ', sparkles: 'Искры' };
+const labelled = (ids, names) => ids.map((id) => [id, names[id] || id]);
 
 const round = (v, step = 0.05) => Math.round(v / step) * step;
 const fix = (v) => Math.round(v * 1000) / 1000;
@@ -104,10 +123,10 @@ export async function bootEditor(root) {
 
   /* ---------- layout ---------- */
 
-  const nameInput = h('input.title-input', { value: doc.name || 'Home', spellcheck: 'false', 'aria-label': 'Home name' });
+  const nameInput = h('input.title-input', { value: doc.name || 'Дом', spellcheck: 'false', 'aria-label': 'Название дома' });
   nameInput.addEventListener('input', () => { snapshot('name'); doc.name = nameInput.value; touch({ inspector: sel.kind === 'home' }); });
   const status = h('div.status');
-  const saveBtn = h('button.btn.primary', { onclick: save }, icon('check', 15, 2.4), 'Save & apply');
+  const saveBtn = h('button.btn.primary', { onclick: save }, icon('check', 15, 2.4), 'Сохранить');
   // Inside a host page (the Home Assistant card) the editor is an overlay that has to be closed
   // from within. With edits not yet saved, the first press only warns.
   const hosted = document.documentElement.classList.contains('embed');
@@ -115,13 +134,13 @@ export async function bootEditor(root) {
   const closeBtn = h('button.btn', { onclick: () => {
     if (dirty && Date.now() > closeArmed) {
       closeArmed = Date.now() + 5000;
-      toast('There are unsaved changes — press Close again to discard them', true);
+      toast('Есть несохранённые правки — нажмите «Закрыть» ещё раз, чтобы отбросить их', true);
       return;
     }
     post('close');
-  } }, 'Close');
-  const hint = h('div.hint', 'Tap to select · drag what is selected · pinch to zoom');
-  const levelBar = h('div.levels', { role: 'tablist', 'aria-label': 'Floors' });
+  } }, 'Закрыть');
+  const hint = h('div.hint', 'Нажмите, чтобы выбрать · тяните выбранное · сводите пальцы для масштаба');
+  const levelBar = h('div.levels', { role: 'tablist', 'aria-label': 'Этажи' });
   // An empty floor says how to start it.
   const emptyCard = h('div.empty-card');
   const toastEl = h('div.toast');
@@ -137,10 +156,10 @@ export async function bootEditor(root) {
     h('header.bar',
       h('div.bar-title', icon('home', 17), nameInput),
       h('div.bar-actions',
-        h('button.btn', { title: 'Undo (⌘Z)', onclick: () => stepHistory(undo, redo) }, 'Undo'),
-        h('button.btn', { title: 'Redo (⇧⌘Z)', onclick: () => stepHistory(redo, undo) }, 'Redo'),
-        h('button.btn', { onclick: importPlan }, 'Import…'),
-        h('button.btn', { onclick: exportPlan }, 'Export…'),
+        h('button.btn', { title: 'Отменить (⌘Z)', onclick: () => stepHistory(undo, redo) }, 'Отменить'),
+        h('button.btn', { title: 'Повторить (⇧⌘Z)', onclick: () => stepHistory(redo, undo) }, 'Повторить'),
+        h('button.btn', { onclick: importPlan }, 'Импорт…'),
+        h('button.btn', { onclick: exportPlan }, 'Экспорт…'),
         saveBtn,
         hosted ? closeBtn : null)),
     sidebar,
@@ -273,7 +292,7 @@ export async function bootEditor(root) {
     let n = doc.levels.length + 1;
     while (ids.has(`floor${n}`)) n++;
     const id = `floor${n}`;
-    const name = where === 'below' ? 'Basement' : LEVEL_NAMES[doc.levels.length] || `Floor ${doc.levels.length + 1}`;
+    const name = where === 'below' ? 'Подвал' : LEVEL_NAMES[doc.levels.length] || `Этаж ${doc.levels.length + 1}`;
     doc.levels.splice(where === 'below' ? 0 : doc.levels.length, 0, { id, name });
     level = id;
     view = null;
@@ -281,7 +300,7 @@ export async function bootEditor(root) {
     world?.dispose();
     world = null;
     touch();
-    toast(`${name} added`);
+    toast(`${name}: добавлено`);
   }
 
   function removeLevel(id) {
@@ -299,7 +318,7 @@ export async function bootEditor(root) {
     sel = { kind: 'home' };
     view = null;
     touch();
-    toast(`${name} removed · ${isPhone ? 'Undo' : '⌘Z'} brings it back`);
+    toast(`${name}: удалено · ${isPhone ? 'Отменить' : '⌘Z'} вернёт`);
   }
 
   function moveLevel(id, step) {
@@ -342,7 +361,7 @@ export async function bootEditor(root) {
     }
     view = null;
     touch();
-    toast(`${rooms.length} rooms copied from ${from.name}`);
+    toast(`Скопировано комнат: ${rooms.length} (${from.name})`);
   }
 
   // One room as big as the floor below (or the whole home), to divide up.
@@ -351,7 +370,7 @@ export async function bootEditor(root) {
     pinLevels();
     const b = outline(below(id) ? levelRooms(below(id).id) : doc.rooms) || { minX: 0, minZ: 0, maxX: 6, maxZ: 4 };
     doc.rooms.push({
-      id: uniqueId('room'), name: 'New room', rect: [b.minX, b.minZ, fix(b.maxX - b.minX), fix(b.maxZ - b.minZ)], floor: 'oak',
+      id: uniqueId('room'), name: 'Новая комната', rect: [b.minX, b.minZ, fix(b.maxX - b.minX), fix(b.maxZ - b.minZ)], floor: 'oak',
       ...(Array.isArray(doc.levels) ? { level: id } : {}),
     });
     sel = { kind: 'room', index: doc.rooms.length - 1 };
@@ -364,21 +383,21 @@ export async function bootEditor(root) {
     levelBar.replaceChildren(
       ...list.map((l) => h(`button.level-tab${l.id === level ? '.active' : ''}`, {
         role: 'tab', 'aria-selected': String(l.id === level),
-        title: l.id === level ? `${l.name} · click for its settings` : `Edit ${l.name}`,
+        title: l.id === level ? `${l.name} · нажмите для настроек` : `Изменить: ${l.name}`,
         onclick: () => { if (l.id === level) select({ kind: 'level', id: l.id }); else setLevel(l.id); },
       }, l.name, h('span.n', levelRooms(l.id).length))),
-      h('button.level-add', { title: 'Add a floor', 'aria-label': 'Add a floor', onclick: () => addLevel() }, icon('plus', 14, 2.4), isPhone ? null : 'Floor'));
+      h('button.level-add', { title: 'Добавить этаж', 'aria-label': 'Добавить этаж', onclick: () => addLevel() }, icon('plus', 14, 2.4), isPhone ? null : 'Этаж'));
     levelBar.querySelector('.active')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
 
     const empty = !levelRooms().length;
     emptyCard.hidden = !empty;
     if (empty) {
       const under = below();
-      emptyCard.replaceChildren(h('b', `${levelName(level)} is empty`),
-        h('p', under ? `Copy the rooms of ${under.name}, or start with one room as big as it and divide it up.` : 'Add a room to start.'),
+      emptyCard.replaceChildren(h('b', `${levelName(level)}: пусто`),
+        h('p', under ? `Скопируйте комнаты этажа «${under.name}» или начните с одной комнаты такого же размера и разделите её.` : 'Добавьте комнату, чтобы начать.'),
         h('div.empty-actions',
-          under ? h('button.btn.primary', { onclick: () => copyRoomsFromBelow() }, icon('copy', 14, 2.2), `Copy ${under.name}`) : null,
-          h('button.btn', { onclick: () => fillLevel() }, icon('room', 14, 2.2), under ? 'One big room' : 'Add a room')));
+          under ? h('button.btn.primary', { onclick: () => copyRoomsFromBelow() }, icon('copy', 14, 2.2), `Скопировать «${under.name}»`) : null,
+          h('button.btn', { onclick: () => fillLevel() }, icon('room', 14, 2.2), under ? 'Одна большая комната' : 'Добавить комнату')));
     }
   }
 
@@ -442,28 +461,30 @@ export async function bootEditor(root) {
 
   function zoomBar() {
     return h('div.zoom',
-      h('button', { title: 'Zoom in (⌘+ or pinch)', 'aria-label': 'Zoom in', onclick: () => zoomBy(1.35) }, icon('zoomIn', 16, 2)),
-      h('button', { title: 'Zoom out', 'aria-label': 'Zoom out', onclick: () => zoomBy(1 / 1.35) }, icon('zoomOut', 16, 2)),
-      h('button', { title: 'Show the whole floor (⌘0)', 'aria-label': 'Show the whole floor', onclick: reveal }, icon('fit', 16, 2)));
+      h('button', { title: 'Приблизить (⌘+)', 'aria-label': 'Приблизить', onclick: () => zoomBy(1.35) }, icon('zoomIn', 16, 2)),
+      h('button', { title: 'Отдалить', 'aria-label': 'Отдалить', onclick: () => zoomBy(1 / 1.35) }, icon('zoomOut', 16, 2)),
+      h('button', { title: 'Показать весь этаж (⌘0)', 'aria-label': 'Показать весь этаж', onclick: reveal }, icon('fit', 16, 2)));
   }
 
   // What can be added, for the bar under the plan (Mac) and the Add sheet (phone).
   function addable() {
     return [
-      ['room', 'room', 'Room', () => add('room')],
-      ['light', 'bulb', 'Lamp', () => add('light')],
-      ['ac', 'ac', 'Air conditioner', () => add('ac')],
-      ['door', 'opening', 'Door', () => add('opening', { type: 'door' })],
-      ['window', 'window', 'Window', () => add('opening', { type: 'window' })],
-      ['stairs', 'stairs', 'Stairs', () => add('furniture', { type: 'stairs' })],
-      ['furniture', 'furniture', 'Furniture', () => add('furniture')],
+      ['room', 'room', 'Комната', () => add('room')],
+      ['light', 'bulb', 'Свет', () => add('light')],
+      ['ac', 'ac', 'Кондиц.', () => add('ac')],
+      ['appliance', 'plug', 'Прибор', () => add('light', { type: 'kettle' })],
+      ['floorheat', 'heat', 'Тёплый пол', () => add('ac', { type: 'floor' })],
+      ['door', 'opening', 'Дверь', () => add('opening', { type: 'door' })],
+      ['window', 'window', 'Окно', () => add('opening', { type: 'window' })],
+      ['stairs', 'stairs', 'Лестница', () => add('furniture', { type: 'stairs' })],
+      ['furniture', 'furniture', 'Мебель', () => add('furniture')],
     ];
   }
 
   function addBar() {
     return h('div.add-bar', addable().map(([key, name, label, run]) => h('button', {
-      title: `Add ${label.toLowerCase()}`, 'data-add': key, onclick: () => { run(); },
-    }, icon(name, 18, 1.9), h('span', key === 'ac' ? 'AC' : label))));
+      title: `Добавить: ${label.toLowerCase()}`, 'data-add': key, onclick: () => { run(); },
+    }, icon(name, 18, 1.9), h('span', label))));
   }
 
   /* ---------- validation + preview ---------- */
@@ -474,9 +495,9 @@ export async function bootEditor(root) {
       valid = normalize(structuredClone(doc));
       const linked = [...doc.lights, ...doc.acs].filter(isLinked).length;
       status.className = 'status';
-      const floors = levelList().length > 1 ? `${levelList().length} floors · ` : '';
-      status.replaceChildren(h('span.ok', '●'), ` ${floors}${doc.rooms.length} rooms · ${doc.lights.length} lights · ${doc.acs.length} ACs · `,
-        `${linked} linked to real devices`, dirty ? h('span.dirty', ' · unsaved changes') : '');
+      const floors = levelList().length > 1 ? `этажей: ${levelList().length} · ` : '';
+      status.replaceChildren(h('span.ok', '●'), ` ${floors}комнат: ${doc.rooms.length} · свет и приборы: ${doc.lights.length} · климат: ${doc.acs.length} · `,
+        `привязано к устройствам: ${linked}`, dirty ? h('span.dirty', ' · есть несохранённые правки') : '');
     } catch (e) {
       valid = null;
       status.className = 'status bad';
@@ -500,7 +521,7 @@ export async function bootEditor(root) {
   }
 
   function buildPreview() {
-    previewToggle.replaceChildren(icon(previewLights ? 'bright' : 'moon', 14), previewLights ? 'Lights on' : 'Lights off');
+    previewToggle.replaceChildren(icon(previewLights ? 'bright' : 'moon', 14), previewLights ? 'Свет вкл' : 'Свет выкл');
     if (!valid) return;
     if (isPhone && !phone.show3D) { world?.dispose(); world = null; previewHost.replaceChildren(); return; }
     world?.dispose();
@@ -529,14 +550,14 @@ export async function bootEditor(root) {
   /* ---------- sidebar ---------- */
 
   function rowLabel(kind, item) {
-    if (kind === 'room' && item.part) return [`↳ ${roomName(item.part)}`, `${fix(item.rect[2])} × ${fix(item.rect[3])} m`];
-    if (kind === 'room') return [item.name || item.id, `${fix(item.rect[2])} × ${fix(item.rect[3])} m`];
-    if (kind === 'light') return [item.name || item.id, `${roomName(item.room)} · ${item.type}`];
-    if (kind === 'ac') return [item.name || item.id, item.type === 'floor' ? `${roomName(item.room)} · underfloor` : `${roomName(item.room)} · ${item.wall} wall`];
-    if (kind === 'furniture') return [item.type, roomName(roomAt(item.pos)?.id) || '—'];
+    if (kind === 'room' && item.part) return [`↳ ${roomName(item.part)}`, `${fix(item.rect[2])} × ${fix(item.rect[3])} м`];
+    if (kind === 'room') return [item.name || item.id, `${fix(item.rect[2])} × ${fix(item.rect[3])} м`];
+    if (kind === 'light') return [item.name || item.id, `${roomName(item.room)} · ${LIGHT_RU[item.type] || item.type}`];
+    if (kind === 'ac') return [item.name || item.id, item.type === 'floor' ? `${roomName(item.room)} · тёплый пол` : `${roomName(item.room)} · стена: ${WALL_RU[item.wall] || item.wall}`];
+    if (kind === 'furniture') return [FURNITURE_RU[item.type] || item.type, roomName(roomAt(item.pos)?.id) || '—'];
     if (kind === 'opening' && !item.to) return [item.type || 'door', ''];
-    if (kind === 'opening') return [item.type || 'door', `${fix(Math.hypot(item.to[0] - item.from[0], item.to[1] - item.from[1]))} m`];
-    return [item.name || item.id, `${Object.keys(item.lights || {}).length} rules`];
+    if (kind === 'opening') return [item.type || 'door', `${fix(Math.hypot(item.to[0] - item.from[0], item.to[1] - item.from[1]))} м`];
+    return [item.name || item.id, `правил: ${Object.keys(item.lights || {}).length}`];
   }
 
   const roomName = (id) => doc.rooms.find((r) => r.id === id)?.name || id || '';
@@ -544,33 +565,33 @@ export async function bootEditor(root) {
 
   function renderSidebar() {
     const nodes = [h(`button.row.home-row${sel.kind === 'home' ? '.active' : ''}`, { onclick: () => select({ kind: 'home' }) },
-      icon('home', 15), h('span.row-name', 'Home settings')),
+      icon('home', 15), h('span.row-name', 'Настройки дома')),
     links.sidebarRow(sel.kind === 'connections' || sel.kind === 'service', () => select({ kind: 'connections' }))];
     const list = levelList();
-    nodes.push(h('div.group', h('span', 'Floors'), h('span.n', list.length),
-      h('button.add', { title: 'Add a floor', 'aria-label': 'Add a floor', onclick: () => addLevel() }, icon('plus', 14, 2.4))));
+    nodes.push(h('div.group', h('span', 'Этажи'), h('span.n', list.length),
+      h('button.add', { title: 'Добавить этаж', 'aria-label': 'Добавить этаж', onclick: () => addLevel() }, icon('plus', 14, 2.4))));
     for (const l of [...list].reverse()) {
       const active = sel.kind === 'level' && sel.id === l.id;
       nodes.push(h(`div.row.level-row${active ? '.active' : ''}${l.id === level ? '.current' : ''}`, {
         role: 'button', tabindex: 0, onclick: () => { setLevel(l.id); select({ kind: 'level', id: l.id }); },
-      }, icon('layers', 14, 2), h('span.row-name', l.name), h('span.row-sub', `${levelRooms(l.id).length} rooms`),
-      list.length > 1 ? h('button.del', { title: 'Remove this floor', 'aria-label': `Remove ${l.name}`, onclick: (e) => { e.stopPropagation(); removeLevel(l.id); } }, icon('close', 13, 2.4)) : null));
+      }, icon('layers', 14, 2), h('span.row-name', l.name), h('span.row-sub', `комнат: ${levelRooms(l.id).length}`),
+      list.length > 1 ? h('button.del', { title: 'Удалить этот этаж', 'aria-label': `Удалить: ${l.name}`, onclick: (e) => { e.stopPropagation(); removeLevel(l.id); } }, icon('close', 13, 2.4)) : null));
     }
     for (const kind of Object.keys(KEYS)) {
       const items = doc[KEYS[kind]];
       const shown = items.filter((item) => here(kind, item)).length;
       nodes.push(h('div.group',
         h('span', `${TITLES[kind]}`), h('span.n', shown),
-        h('button.add', { title: `Add to ${TITLES[kind].toLowerCase()}`, 'aria-label': `Add ${kind}`, onclick: () => add(kind) }, icon('plus', 14, 2.4))));
+        h('button.add', { title: `Добавить в раздел «${TITLES[kind]}»`, 'aria-label': `Добавить`, onclick: () => add(kind) }, icon('plus', 14, 2.4))));
       items.forEach((item, index) => {
         if (!here(kind, item)) return;
         const [name, sub] = rowLabel(kind, item);
         const active = sel.kind === kind && sel.index === index;
         nodes.push(h(`div.row${active ? '.active' : ''}`, { role: 'button', tabindex: 0, onclick: () => select({ kind, index }) },
           h('span.row-name', name),
-          isLinked(item) ? h('span.linked', { title: 'Linked to a real device' }, icon('link', 12, 2.2)) : null,
+          isLinked(item) ? h('span.linked', { title: 'Привязано к устройству' }, icon('link', 12, 2.2)) : null,
           h('span.row-sub', sub),
-          h('button.del', { title: 'Remove', 'aria-label': `Remove ${name}`, onclick: (e) => { e.stopPropagation(); remove(kind, index); } }, icon('close', 13, 2.4))));
+          h('button.del', { title: 'Удалить', 'aria-label': `Удалить: ${name}`, onclick: (e) => { e.stopPropagation(); remove(kind, index); } }, icon('close', 13, 2.4))));
       });
     }
     const top = sidebar.scrollTop;
@@ -596,23 +617,26 @@ export async function bootEditor(root) {
     if (kind === 'room') {
       const maxX = Math.max(0, ...rooms.map((r) => r.rect[0] + r.rect[2]));
       const minZ = Math.min(...rooms.map((r) => r.rect[1]), 0);
-      list.push(stamp({ id: uniqueId('room'), name: 'New room', rect: [fix(maxX), fix(rooms.length ? minZ : 0), 3, 3], floor: 'oak' }));
+      list.push(stamp({ id: uniqueId('room'), name: 'Новая комната', rect: [fix(maxX), fix(rooms.length ? minZ : 0), 3, 3], floor: 'oak' }));
     } else if (kind === 'light') {
-      if (!room) return toast('Add a room first', true);
-      list.push({ id: uniqueId(`${room.id}.light`), name: 'New light', room: room.id, type: 'ceiling', pos: freeSpot(room, center), capabilities: [] });
+      if (!room) return toast('Сначала добавьте комнату', true);
+      // An appliance starts as a kettle; "Тип" in its settings turns it into a towel rail, a fan, a blind…
+      list.push(type ? { id: uniqueId(`${room.id}.${type}`), name: 'Новый прибор', room: room.id, type, pos: freeSpot(room, center), capabilities: [] }
+        : { id: uniqueId(`${room.id}.light`), name: 'Новый светильник', room: room.id, type: 'ceiling', pos: freeSpot(room, center), capabilities: [] });
     } else if (kind === 'ac') {
-      if (!room) return toast('Add a room first', true);
-      list.push({ id: uniqueId(`${room.id}.ac`), name: `${room.name} AC`, room: room.id, wall: 'north', pos: [center[0], room.rect[1]], y: 2.2 });
+      if (!room) return toast('Сначала добавьте комнату', true);
+      list.push(type === 'floor' ? { id: uniqueId(`${room.id}.floor`), name: 'Тёплый пол', room: room.id, type: 'floor', pos: center, min: 5, max: 35 }
+        : { id: uniqueId(`${room.id}.ac`), name: 'Кондиционер', room: room.id, wall: 'north', pos: [center[0], room.rect[1]], y: 2.2 });
     } else if (kind === 'furniture') {
       list.push(stamp(type === 'stairs' ? { type, pos: center, rot: 0, width: 1, depth: 2.8 } : { type: type || 'sofa', pos: center, rot: 0 }));
     } else if (kind === 'opening') {
-      if (!room) return toast('Add a room first', true);
+      if (!room) return toast('Сначала добавьте комнату', true);
       // A door on the near (south) wall; a window on the far (north) one, where the 3D model shows it.
       const half = type === 'window' ? 0.6 : 0.45;
       const z = type === 'window' ? room.rect[1] : room.rect[1] + room.rect[3];
       list.push(stamp({ type: type || 'door', from: [fix(center[0] - half), fix(z)], to: [fix(center[0] + half), fix(z)] }));
     } else if (kind === 'scene') {
-      list.push({ id: uniqueId('scene'), name: 'New scene', icon: 'sparkles', lights: { '*': { on: false } } });
+      list.push({ id: uniqueId('scene'), name: 'Новая сцена', icon: 'sparkles', lights: { '*': { on: false } } });
     }
     sel = { kind, index: list.length - 1 };
     if (view && !inView(list[list.length - 1])) view = null;
@@ -655,12 +679,12 @@ export async function bootEditor(root) {
       copy.to[k] = fix(copy.to[k] + len);
     } else if (kind === 'scene') {
       copy.id = uniqueId(item.id);
-      copy.name = `${item.name || item.id} copy`;
+      copy.name = `${item.name || item.id} (копия)`;
     }
     doc[KEYS[kind]].push(copy);
     sel = { kind, index: doc[KEYS[kind]].length - 1 };
     touch();
-    toast('Duplicated');
+    toast('Создана копия');
   }
 
   // Turns furniture or a lamp a quarter (or, with `step`, a little).
@@ -677,7 +701,7 @@ export async function bootEditor(root) {
     const room = doc.rooms[index];
     if (!room) return;
     const [x, z, w, d] = room.rect;
-    if (Math.max(w, d) < MIN_ROOM * 2) { toast('Too small to split', true); return; }
+    if (Math.max(w, d) < MIN_ROOM * 2) { toast('Слишком мала, чтобы делить', true); return; }
     snapshot();
     const across = w >= d;
     const cut = round((across ? w : d) / 2, 0.05);
@@ -699,7 +723,7 @@ export async function bootEditor(root) {
     doc.openings.push(stamp({ type: 'door', ...door, ...(room.level ? { level: room.level } : {}) }));
     sel = { kind: 'room', index: doc.rooms.length - 1 };
     touch();
-    toast('Split in two, with a door between');
+    toast('Разделена на две, между ними дверь');
   }
 
   // Moves a room, and what stands in it, to another floor.
@@ -1254,7 +1278,7 @@ export async function bootEditor(root) {
       onclick: () => {
         if (b.dataset.armed) { run(); return; }
         b.dataset.armed = '1';
-        b.textContent = 'Tap again to remove';
+        b.textContent = 'Нажмите ещё раз для удаления';
         haptic('medium');
         setTimeout(() => { delete b.dataset.armed; b.textContent = label; }, 3000);
       },
@@ -1267,7 +1291,7 @@ export async function bootEditor(root) {
 
   // A reading the plan shows but never commands: picked from the connected platform's entities.
   const reads = (obj, key) => (id) => { snapshot(); if (id) obj[key] = id; else delete obj[key]; touch({ inspector: true }); };
-  function outdoorField(label, key, deviceKind, none = 'None') {
+  function outdoorField(label, key, deviceKind, none = 'Нет') {
     return links.entityField(label, deviceKind, doc.outdoor?.[key], (id) => {
       doc.outdoor ||= {};
       reads(doc.outdoor, key)(id);
@@ -1295,42 +1319,42 @@ export async function bootEditor(root) {
       : h('div.insp-head', h('h2', title), sub ? h('span', sub) : null));
 
     if (kind === 'home') {
-      head('Home', 'Global settings of this plan');
+      head('Дом', 'Общие настройки плана');
       doc.camera ||= { azimuth: 34, elevation: 47 };
-      if (isPhone) nodes.push(section('Real devices', links.sidebarRow(false, () => select({ kind: 'connections' }))));
-      nodes.push(section('Building',
-        row(bind('Wall height, m', number(0.1), { ...prop(doc, 'wallHeight', 2.6), parse: parseNum }),
-          bind('Inner walls shown, m', number(0.05), { ...prop(doc, 'interiorWallHeight', 1.25), parse: parseNum })),
-        bind('Outdoor temperature, °C', number(1), { ...prop(doc, 'outdoorTemp', 27), parse: parseNum })),
-      section('Outside',
-        outdoorField('Weather', 'weather', 'weather'),
-        outdoorField('Sun (day and night)', 'sun', 'sun'),
-        outdoorField('Pressure sensor', 'pressure', 'pressure', 'From the weather'),
-        h('p.note', 'Shown under the home’s name. The sun lights the model by day; without it the home stays at night.')),
-      section('Default camera',
-        row(bind('Azimuth, °', number(1), { ...prop(doc.camera, 'azimuth', 34), parse: parseNum }),
-          bind('Elevation, °', number(1), { ...prop(doc.camera, 'elevation', 47), parse: parseNum })),
-        h('p.note', 'Walls facing the camera are cut away, so the azimuth decides which side of the home is open.')),
-      isPhone ? null : section('Shortcuts',
+      if (isPhone) nodes.push(section('Устройства', links.sidebarRow(false, () => select({ kind: 'connections' }))));
+      nodes.push(section('Здание',
+        row(bind('Высота стен, м', number(0.1), { ...prop(doc, 'wallHeight', 2.6), parse: parseNum }),
+          bind('Видимая высота перегородок, м', number(0.05), { ...prop(doc, 'interiorWallHeight', 1.25), parse: parseNum })),
+        bind('Температура на улице, °C', number(1), { ...prop(doc, 'outdoorTemp', 27), parse: parseNum })),
+      section('Улица',
+        outdoorField('Погода', 'weather', 'weather'),
+        outdoorField('Солнце (день и ночь)', 'sun', 'sun'),
+        outdoorField('Датчик давления', 'pressure', 'pressure', 'Из погоды'),
+        h('p.note', 'Показывается под названием дома. По солнцу модель освещается днём; без него в доме всегда ночь.')),
+      section('Камера по умолчанию',
+        row(bind('Азимут, °', number(1), { ...prop(doc.camera, 'azimuth', 34), parse: parseNum }),
+          bind('Наклон, °', number(1), { ...prop(doc.camera, 'elevation', 47), parse: parseNum })),
+        h('p.note', 'Стены со стороны камеры срезаются, поэтому азимут определяет, какая сторона дома открыта.')),
+      isPhone ? null : section('Горячие клавиши',
         h('dl.keys',
-          h('dt', 'Scroll · ⌘ scroll or pinch'), h('dd', 'Move around · zoom'),
-          h('dt', 'Drag the empty plan · Space-drag'), h('dd', 'Move around'),
-          h('dt', '⌘D · R · ⇧R'), h('dd', 'Duplicate · turn 90° · turn 15°'),
-          h('dt', 'Arrows · ⇧ arrows'), h('dd', 'Nudge 5 cm · 50 cm'),
-          h('dt', '⌥ while dragging'), h('dd', 'No snapping'),
-          h('dt', 'Page Up · Page Down'), h('dd', 'Floor above · below'),
-          h('dt', '⌘0 · Esc · ⌫'), h('dd', 'Whole floor · deselect · remove'))),
-      section('How it works',
+          h('dt', 'Прокрутка · ⌘ + прокрутка'), h('dd', 'Сдвиг · масштаб'),
+          h('dt', 'Тянуть пустое место · Пробел + тянуть'), h('dd', 'Сдвиг плана'),
+          h('dt', '⌘D · R · ⇧R'), h('dd', 'Копия · поворот 90° · поворот 15°'),
+          h('dt', 'Стрелки · ⇧ + стрелки'), h('dd', 'Сдвиг на 5 см · 50 см'),
+          h('dt', '⌥ при перетаскивании'), h('dd', 'Без прилипания'),
+          h('dt', 'Page Up · Page Down'), h('dd', 'Этаж выше · ниже'),
+          h('dt', '⌘0 · Esc · ⌫'), h('dd', 'Весь этаж · снять выбор · удалить'))),
+      section('Как это работает',
         h('p.note', isPhone
           ? 'Tap anything on the plan, or find it under Items, to edit it. “Save” keeps the plan on this iPhone and sends it to your paired computer. Coordinates are metres: x grows to the right (east), z grows downwards (south).'
-          : 'Pick anything on the plan or in the list to edit it. “Save & apply” writes the plan to disk and reloads the menu bar panel. Coordinates are metres: x grows to the right (east), z grows downwards (south).')));
+          : 'Выберите что-нибудь на плане или в списке, чтобы изменить. «Сохранить» возвращает план в карточку для предпросмотра; в дашборд он записывается после подтверждения там. Координаты в метрах: x растёт вправо (восток), z — вниз (юг).')));
     } else if (kind === 'level') {
       const l = levelList().find((x) => x.id === sel.id) || levelList().find((x) => x.id === level);
       const list = levelList();
       const i = list.indexOf(l);
       const rooms = levelRooms(l.id);
       const under = below(l.id);
-      head(l.name, `${rooms.length} rooms · floor ${i + 1} of ${list.length}`);
+      head(l.name, `комнат: ${rooms.length} · этаж ${i + 1} из ${list.length}`);
       const own = Array.isArray(doc.levels) ? doc.levels.find((x) => x.id === l.id) : null;
       // A home without "levels" gets them as soon as its one floor is named or given a height.
       const editable = () => {
@@ -1341,49 +1365,49 @@ export async function bootEditor(root) {
         }
         return doc.levels.find((x) => x.id === sel.id);
       };
-      nodes.push(section('Floor',
-        bind('Name', text(), { get: () => l.name, set: (v) => { editable().name = v; } }),
-        bind('Ceiling height, m', number(0.1), {
+      nodes.push(section('Этаж',
+        bind('Название', text(), { get: () => l.name, set: (v) => { editable().name = v; } }),
+        bind('Высота потолка, м', number(0.1), {
           get: () => own?.wallHeight ?? '',
           set: (v) => { const x = editable(); if (v === '') delete x.wallHeight; else x.wallHeight = v; },
           parse: optNum,
         }),
-        h('p.note', `Empty: the home’s wall height (${doc.wallHeight ?? 2.6} m). Floors stack in this order; the 3D view shows one floor at a time, with the floors under it.`)),
-      section('Arrange',
+        h('p.note', `Пусто — высота стен дома (${doc.wallHeight ?? 2.6} м). Этажи идут в этом порядке; в 3D виден один этаж и те, что под ним.`)),
+      section('Порядок',
         h('div.fields',
-          h('button.btn', { disabled: i === list.length - 1, onclick: () => moveLevel(l.id, 1) }, icon('stairs', 14, 2.2), 'Move up'),
-          h('button.btn', { disabled: i === 0, onclick: () => moveLevel(l.id, -1) }, icon('down', 14, 2.2), 'Move down')),
+          h('button.btn', { disabled: i === list.length - 1, onclick: () => moveLevel(l.id, 1) }, icon('stairs', 14, 2.2), 'Выше'),
+          h('button.btn', { disabled: i === 0, onclick: () => moveLevel(l.id, -1) }, icon('down', 14, 2.2), 'Ниже')),
         h('div.fields',
-          h('button.btn', { onclick: () => addLevel('above') }, icon('plus', 14, 2.2), 'Floor above'),
-          i === 0 ? h('button.btn', { onclick: () => addLevel('below') }, icon('plus', 14, 2.2), 'Basement') : null),
-        under && !rooms.length ? h('button.btn.primary.wide', { onclick: () => copyRoomsFromBelow(l.id) }, icon('copy', 14, 2.2), `Copy the rooms of ${under.name}`) : null,
-        under ? h('p.note', `${under.name} shows faintly under this floor, with its stairs, so walls and stairs line up.`) : null),
-      list.length > 1 ? section('Remove',
-        confirmButton(`Remove ${l.name}`, () => removeLevel(l.id)),
-        h('p.note', `Takes its ${rooms.length} rooms with their lamps, ACs, furniture, doors and windows.`)) : null);
+          h('button.btn', { onclick: () => addLevel('above') }, icon('plus', 14, 2.2), 'Этаж выше'),
+          i === 0 ? h('button.btn', { onclick: () => addLevel('below') }, icon('plus', 14, 2.2), 'Подвал') : null),
+        under && !rooms.length ? h('button.btn.primary.wide', { onclick: () => copyRoomsFromBelow(l.id) }, icon('copy', 14, 2.2), `Скопировать комнаты этажа «${under.name}»`) : null,
+        under ? h('p.note', `«${under.name}» слабо виден под этим этажом вместе с лестницами, чтобы совместить стены.`) : null),
+      list.length > 1 ? section('Удалить',
+        confirmButton(`Удалить: ${l.name}`, () => removeLevel(l.id)),
+        h('p.note', `Вместе с этажом удалятся его комнаты (${rooms.length}) со светом, климатом, мебелью, дверями и окнами.`)) : null);
     } else if (kind === 'connections') {
-      head('Connections', 'Where your real lamps and air conditioners live');
-      if (isPhone) nodes.push(h('button.back-link', { onclick: () => select({ kind: 'home' }) }, icon('back', 14, 2.2), 'Home'));
+      head('Подключения', 'Откуда берутся ваши устройства');
+      if (isPhone) nodes.push(h('button.back-link', { onclick: () => select({ kind: 'home' }) }, icon('back', 14, 2.2), 'Дом'));
       nodes.push(...links.overview());
     } else if (kind === 'service') {
-      nodes.push(h('button.back-link', { onclick: () => { links.stopPairing(); select({ kind: 'connections' }); } }, icon('back', 14, 2.2), 'Connections'));
+      nodes.push(h('button.back-link', { onclick: () => { links.stopPairing(); select({ kind: 'connections' }); } }, icon('back', 14, 2.2), 'Подключения'));
       nodes.push(h('div.insp-head.svc-head', links.tile(sel.service, 40),
         h('div', h('h2', links.title(sel.service)), h('span', links.blurb(sel.service)))));
       nodes.push(...[links.detail(sel.service, tuyaPanel)].flat());
     } else if (!item) {
-      head('Nothing selected');
-      if (isPhone) nodes.push(h('p.note', 'Tap a room, a lamp or anything else on the plan.'));
+      head('Ничего не выбрано');
+      if (isPhone) nodes.push(h('p.note', 'Нажмите на комнату, светильник или что-то ещё на плане.'));
     } else if (kind === 'room') {
       head(item.name || item.id, `id: ${item.id}`);
       const list = levelList();
-      nodes.push(section('Room',
-        bind('Name', text(), prop(item, 'name', '')),
-        row(bind('Flooring', choice(FLOOR_KINDS), { ...prop(item, 'floor', 'oak'), event: 'change' }),
-          list.length > 1 ? bind('On floor', choice(list.map((l) => [l.id, l.name])), {
+      nodes.push(section('Комната',
+        bind('Название', text(), prop(item, 'name', '')),
+        row(bind('Пол', choice(labelled(FLOOR_KINDS, FLOOR_RU)), { ...prop(item, 'floor', 'oak'), event: 'change' }),
+          list.length > 1 ? bind('Этаж', choice(list.map((l) => [l.id, l.name])), {
             get: () => item.level ?? firstLevel(), set: (v) => moveRoomToLevel(sel.index, v), event: 'change',
           }) : null),
         doc.rooms.some((r) => r.part === item.id) ? null
-          : bind('Part of', choice([['', 'A room of its own'], ...doc.rooms.filter((r) => r !== item && !r.part).map((r) => [r.id, r.name || r.id])]), {
+          : bind('Часть комнаты', choice([['', 'Отдельная комната'], ...doc.rooms.filter((r) => r !== item && !r.part).map((r) => [r.id, r.name || r.id])]), {
             get: () => item.part ?? '',
             set: (v) => {
               if (!v) { delete item.part; return; }
@@ -1394,19 +1418,19 @@ export async function bootEditor(root) {
             },
             event: 'change',
           }),
-        item.part ? h('p.note', 'A piece of another room: it shares that room’s name, tab and devices. Leave an “open” gap where the two meet.') : null,
+        item.part ? h('p.note', 'Часть другой комнаты: у них общие название, вкладка и устройства. Там, где части соприкасаются, оставьте открытый проём.') : null,
         h('div.fields',
-          h('button.btn', { onclick: () => splitRoom(sel.index) }, icon('split', 14, 2.2), 'Split in two'),
-          h('button.btn', { onclick: duplicate }, icon('duplicate', 14, 2.2), 'Duplicate'))),
-      item.part ? null : section('Climate',
-        roomSensorField('Temperature', item, 'temperature', 'sensor'),
-        roomSensorField('Humidity', item, 'humidity', 'humidity'),
-        h('p.note', 'Shown over the room in the 3D view and next to its name in the list.')),
-      section('Position & size, m',
+          h('button.btn', { onclick: () => splitRoom(sel.index) }, icon('split', 14, 2.2), 'Разделить на две'),
+          h('button.btn', { onclick: duplicate }, icon('duplicate', 14, 2.2), 'Копия'))),
+      item.part ? null : section('Климат',
+        roomSensorField('Температура', item, 'temperature', 'sensor'),
+        roomSensorField('Влажность', item, 'humidity', 'humidity'),
+        h('p.note', 'Показывается над комнатой в 3D и рядом с её названием в списке.')),
+      section('Положение и размер, м',
         row(bind('X', number(0.1), { ...at(item, 'rect', 0), parse: parseNum }), bind('Z', number(0.1), { ...at(item, 'rect', 1), parse: parseNum })),
-        row(bind('Width', number(0.1), { ...at(item, 'rect', 2), parse: parseNum }), bind('Depth', number(0.1), { ...at(item, 'rect', 3), parse: parseNum })),
-        h('p.note', isPhone ? 'Drag the dots on its corners and sides to resize it. Rooms that share an edge get an interior wall there; add a door or an “open” gap to connect them.'
-          : 'Drag the dots on its corners and sides to resize it; edges snap to other rooms (hold ⌥ not to). Rooms that share an edge get an interior wall there; add a door or an “open” gap to connect them.')));
+        row(bind('Ширина', number(0.1), { ...at(item, 'rect', 2), parse: parseNum }), bind('Глубина', number(0.1), { ...at(item, 'rect', 3), parse: parseNum })),
+        h('p.note', isPhone ? 'Тяните точки на углах и сторонах, чтобы изменить размер. Между комнатами с общей стороной появляется стена; чтобы их соединить, добавьте дверь или открытый проём.'
+          : 'Тяните точки на углах и сторонах, чтобы изменить размер; края прилипают к соседним комнатам (⌥ отключает). Между комнатами с общей стороной появляется стена; чтобы их соединить, добавьте дверь или открытый проём.')));
     } else if (kind === 'light') {
       head(item.name || item.id, `id: ${item.id}`);
       item.capabilities ||= [];
@@ -1425,19 +1449,19 @@ export async function bootEditor(root) {
         if (APPLIANCE_TYPES.includes(v) || v === 'downlights') item.capabilities = [];
       };
       const feeders = doc.lights.filter((l) => l !== item && l.power == null && !doc.lights.some((x) => x.power === item.id));
-      nodes.push(section(appliance ? 'Appliance' : 'Light',
-        bind('Name', text(), prop(item, 'name', '')),
-        row(bind('Room', choice(doc.rooms.filter((r) => !r.part).map((r) => [r.id, r.name || r.id])), { ...prop(item, 'room'), event: 'change' }),
-          bind('Fixture', choice(LIGHT_KINDS), { get: () => item.type, set: setType, event: 'change' })),
-        appliance || !feeders.length ? null : bind('Switched by', choice([['', 'Its own switch'], ...feeders.map((l) => [l.id, `${l.name || l.id} — ${roomName(l.room)}`])]),
+      nodes.push(section(appliance ? 'Прибор' : 'Светильник',
+        bind('Название', text(), prop(item, 'name', '')),
+        row(bind('Комната', choice(doc.rooms.filter((r) => !r.part).map((r) => [r.id, r.name || r.id])), { ...prop(item, 'room'), event: 'change' }),
+          bind('Тип', choice(labelled(LIGHT_KINDS, LIGHT_RU)), { get: () => item.type, set: setType, event: 'change' })),
+        appliance || !feeders.length ? null : bind('Выключатель', choice([['', 'Свой выключатель'], ...feeders.map((l) => [l.id, `${l.name || l.id} — ${roomName(l.room)}`])]),
           { ...optional(item, 'power'), event: 'change' }),
-        item.power ? h('p.note', 'A smart lamp behind that light’s wall switch: dark while the switch is off, on with it.') : null),
-      item.type === 'downlights' && shaped ? section(`Spots · ${item.points.length}`,
+        item.power ? h('p.note', 'Умная лампа за выключателем другого светильника: не горит, пока он выключен, и включается вместе с ним.') : null),
+      item.type === 'downlights' && shaped ? section(`Точки · ${item.points.length}`,
         h('div.fields',
-          h('button.btn', { onclick: reshape(() => { const [x, z] = item.points[item.points.length - 1]; item.points.push([fix(x + 0.6), z]); }) }, icon('plus', 14, 2.2), 'Add a spot'),
-          item.points.length > 1 ? h('button.btn', { onclick: reshape(() => { item.points.pop(); }) }, icon('minus', 14, 2.2), 'Remove last') : null),
-        h('p.note', 'One switch for all of them. Drag the group by any spot; select it, then drag a single spot by its dot.')) : null,
-      item.type === 'strip' ? section('Line',
+          h('button.btn', { onclick: reshape(() => { const [x, z] = item.points[item.points.length - 1]; item.points.push([fix(x + 0.6), z]); }) }, icon('plus', 14, 2.2), 'Добавить точку'),
+          item.points.length > 1 ? h('button.btn', { onclick: reshape(() => { item.points.pop(); }) }, icon('minus', 14, 2.2), 'Убрать последнюю') : null),
+        h('p.note', 'Один выключатель на все. Группа двигается за любую точку; у выбранной группы каждую точку можно двигать отдельно за её ручку.')) : null,
+      item.type === 'strip' ? section('Линия',
         shaped ? h('div.fields',
           h('button.btn', { onclick: reshape(() => {
             const path = item.paths[item.paths.length - 1];
@@ -1445,57 +1469,57 @@ export async function bootEditor(root) {
             const len = Math.hypot(bx - ax, bz - az) || 1;
             // The next run turns the corner: a right angle off the last one.
             path.push([fix(bx - (bz - az) / len * 0.8), fix(bz + (bx - ax) / len * 0.8)]);
-          }) }, icon('plus', 14, 2.2), 'Add a corner'),
+          }) }, icon('plus', 14, 2.2), 'Добавить угол'),
           h('button.btn', { onclick: reshape(() => {
             const path = item.paths[item.paths.length - 1];
             if (path.length > 2) path.pop(); else if (item.paths.length > 1) item.paths.pop();
-          }) }, icon('minus', 14, 2.2), 'Remove last'))
-          : bind('Strip length, m', number(0.1), { ...prop(item, 'length', 1), parse: parseNum }),
+          }) }, icon('minus', 14, 2.2), 'Убрать последнюю'))
+          : bind('Длина ленты, м', number(0.1), { ...prop(item, 'length', 1), parse: parseNum }),
         shaped ? h('div.fields',
-          h('button.btn', { onclick: reshape(() => { const [x, z] = item.paths[item.paths.length - 1].slice(-1)[0]; item.paths.push([[fix(x + 0.5), fix(z + 0.5)], [fix(x + 1.5), fix(z + 0.5)]]); }) }, 'Add a separate run'),
+          h('button.btn', { onclick: reshape(() => { const [x, z] = item.paths[item.paths.length - 1].slice(-1)[0]; item.paths.push([[fix(x + 0.5), fix(z + 0.5)], [fix(x + 1.5), fix(z + 0.5)]]); }) }, 'Отдельный отрезок'),
           h('button.btn', { onclick: reshape(() => {
             const [[ax, az], [bx, bz]] = item.paths[0];
             item.length = fix(Math.hypot(bx - ax, bz - az)) || 1;
             item.rot = Math.round(-Math.atan2(bz - az, bx - ax) * 180 / Math.PI);
             item.pos = [fix((ax + bx) / 2), fix((az + bz) / 2)];
             delete item.paths;
-          }) }, 'Make it straight'))
+          }) }, 'Сделать прямой'))
           : h('button.btn.wide', { onclick: reshape(() => {
             const a = -(item.rot || 0) * Math.PI / 180;
             const half = (item.length || 1) / 2;
             const [x, z] = item.pos;
             item.paths = [[[fix(x - Math.cos(a) * half), fix(z - Math.sin(a) * half)], [fix(x + Math.cos(a) * half), fix(z + Math.sin(a) * half)]]];
             delete item.rot; delete item.length;
-          }) }, 'Give it corners'),
-        shaped ? h('p.note', 'One switch for the whole line. Select it, then drag its corners by their dots.') : null) : null,
-      section(shaped ? 'Height, m' : 'Position, m',
+          }) }, 'Сделать линией с углами'),
+        shaped ? h('p.note', 'Один выключатель на всю линию. Выберите её и двигайте углы за ручки.') : null) : null,
+      section(shaped ? 'Высота, м' : 'Положение, м',
         shaped ? null : row(bind('X', number(), { ...at(item, 'pos', 0), parse: parseNum }), bind('Z', number(), { ...at(item, 'pos', 1), parse: parseNum })),
-        row(bind('Height (auto if empty)', number(), { ...optional(item, 'y'), parse: optNum }),
-          shaped || ['downlights', 'fan', 'kettle'].includes(item.type) ? null : bind('Rotation, °', number(15), { ...prop(item, 'rot', 0), parse: parseNum })),
-        item.type in BAR_WIDTH ? row(bind('Width, m', number(0.1), { ...optional(item, 'width'), parse: optNum }),
-          bind(item.type === 'blind' ? 'Drop, m' : 'Height of it, m', number(0.1), { ...optional(item, 'height'), parse: optNum })) : null,
-        item.type === 'blind' ? h('p.note', 'Height is the top of the window; the drop is how far the cloth hangs when closed.') : null),
-      appliance ? section('Its thermometer',
-        links.entityField('Temperature', 'sensor', item.sensor?.id, (id) => {
+        row(bind('Высота (пусто — авто)', number(), { ...optional(item, 'y'), parse: optNum }),
+          shaped || ['downlights', 'fan', 'kettle'].includes(item.type) ? null : bind('Поворот, °', number(15), { ...prop(item, 'rot', 0), parse: parseNum })),
+        item.type in BAR_WIDTH ? row(bind('Ширина, м', number(0.1), { ...optional(item, 'width'), parse: optNum }),
+          bind(item.type === 'blind' ? 'Длина полотна, м' : 'Высота прибора, м', number(0.1), { ...optional(item, 'height'), parse: optNum })) : null,
+        item.type === 'blind' ? h('p.note', 'Высота — верх окна; длина полотна — насколько штора опускается в закрытом виде.') : null),
+      appliance ? section('Термометр прибора',
+        links.entityField('Температура', 'sensor', item.sensor?.id, (id) => {
           snapshot();
           if (id) item.sensor = { service: 'homeassistant', id }; else delete item.sensor;
           touch({ inspector: true });
         }),
-        h('p.note', 'Shown on its tile: the water in a kettle, a towel rail.')) : null,
-      appliance || item.type === 'downlights' ? null : section('What it can do',
+        h('p.note', 'Показывается на плитке: вода в чайнике, полотенцесушитель.')) : null,
+      appliance || item.type === 'downlights' ? null : section('Возможности',
         h('div.checks',
-          bind('Dimming', h('input', { type: 'checkbox' }), { ...cap('brightness'), event: 'change' }),
-          bind('White temperature', h('input', { type: 'checkbox' }), { ...cap('temp'), event: 'change' }),
-          bind('Colour', h('input', { type: 'checkbox' }), { ...cap('color'), event: 'change' })),
-        h('p.note', 'Leave all three off for a lamp on a plain smart plug: it is then a simple on/off switch.')),
+          bind('Яркость', h('input', { type: 'checkbox' }), { ...cap('brightness'), event: 'change' }),
+          bind('Температура белого', h('input', { type: 'checkbox' }), { ...cap('temp'), event: 'change' }),
+          bind('Цвет', h('input', { type: 'checkbox' }), { ...cap('color'), event: 'change' })),
+        h('p.note', 'Оставьте всё выключенным для лампы на обычной розетке или выключателе: тогда это просто вкл/выкл.')),
       links.deviceSection(item, item.type === 'blind' ? 'cover' : item.type === 'vacuum' ? 'vacuum' : 'light', linkHooks));
     } else if (kind === 'ac') {
       head(item.name || item.id, `id: ${item.id}`);
       const floor = item.type === 'floor';
       const centreIn = (id) => { const r = doc.rooms.find((x) => x.id === id); if (r) item.pos = [fix(r.rect[0] + r.rect[2] / 2), fix(r.rect[1] + r.rect[3] / 2)]; };
-      nodes.push(section(floor ? 'Underfloor heating' : 'Air conditioner',
-        bind('Name', text(), prop(item, 'name', '')),
-        bind('Kind', choice([['wall', 'Unit on a wall'], ['floor', 'Underfloor heating']]), {
+      nodes.push(section(floor ? 'Тёплый пол' : 'Кондиционер',
+        bind('Название', text(), prop(item, 'name', '')),
+        bind('Вид', choice([['wall', 'Блок на стене'], ['floor', 'Тёплый пол']]), {
           get: () => (floor ? 'floor' : 'wall'),
           set: (v) => {
             if (v === 'floor') {
@@ -1511,44 +1535,44 @@ export async function bootEditor(root) {
           },
           event: 'change',
         }),
-        row(bind('Room', choice(doc.rooms.filter((r) => !r.part).map((r) => [r.id, r.name || r.id])), {
+        row(bind('Комната', choice(doc.rooms.filter((r) => !r.part).map((r) => [r.id, r.name || r.id])), {
           get: () => item.room, set: (v) => { item.room = v; if (floor) centreIn(v); }, event: 'change',
         }),
-          floor ? null : bind('Mounted on wall', choice(WALLS), { ...prop(item, 'wall', 'north'), event: 'change' }))),
-      section(floor ? 'Range' : 'Position, m',
+          floor ? null : bind('Стена', choice(labelled(WALLS, WALL_RU)), { ...prop(item, 'wall', 'north'), event: 'change' }))),
+      section(floor ? 'Диапазон' : 'Положение, м',
         floor ? null : row(bind('X', number(), { ...at(item, 'pos', 0), parse: parseNum }), bind('Z', number(), { ...at(item, 'pos', 1), parse: parseNum })),
-        row(floor ? null : bind('Height', number(), { ...prop(item, 'y', 2.2), parse: parseNum }),
-          bind('Min / max °C', text(), {
+        row(floor ? null : bind('Высота', number(), { ...prop(item, 'y', 2.2), parse: parseNum }),
+          bind('Мин / макс °C', text(), {
             get: () => `${item.min ?? (floor ? 5 : 16)}-${item.max ?? (floor ? 35 : 30)}`,
             set: ([a, b]) => { item.min = a; item.max = b; },
             parse: (v) => { const m = /^(\d+)\s*-\s*(\d+)$/.exec(v.trim()); return m && +m[1] < +m[2] ? [+m[1], +m[2]] : undefined; },
           })),
-        h('p.note', floor ? 'It heats the whole room: drop its mark in another room to move it there.' : 'Dragging the unit on the plan snaps it to the nearest wall of its room.')),
+        h('p.note', floor ? 'Греет всю комнату: перетащите значок в другую комнату, чтобы перенести.' : 'При перетаскивании блок прилипает к ближайшей стене комнаты.')),
       links.deviceSection(item, 'ac', linkHooks),
       links.sensorSection(item, linkHooks));
     } else if (kind === 'furniture') {
       const stairs = item.type === 'stairs';
-      head(stairs ? 'Stairs' : item.type, stairs ? 'Up to the floor above' : 'Decoration only');
-      nodes.push(section('Furniture',
-        bind('Type', choice(FURNITURE_TYPES), { ...prop(item, 'type'), event: 'change' }),
+      head(FURNITURE_RU[item.type] || item.type, stairs ? 'До этажа выше' : 'Только для вида');
+      nodes.push(section('Мебель',
+        bind('Тип', choice(labelled(FURNITURE_TYPES, FURNITURE_RU)), { ...prop(item, 'type'), event: 'change' }),
         row(bind('X', number(), { ...at(item, 'pos', 0), parse: parseNum }), bind('Z', number(), { ...at(item, 'pos', 1), parse: parseNum })),
-        row(bind('Rotation, °', number(15), { ...prop(item, 'rot', 0), parse: parseNum }),
-          bind('Width, m', number(0.1), { ...optional(item, 'width'), parse: optNum })),
-        stairs ? bind('Length, m', number(0.1), { ...optional(item, 'depth'), parse: optNum }) : bind('Colour (hex, optional)', text(), optional(item, 'color')),
+        row(bind('Поворот, °', number(15), { ...prop(item, 'rot', 0), parse: parseNum }),
+          bind('Ширина, м', number(0.1), { ...optional(item, 'width'), parse: optNum })),
+        stairs ? bind('Длина, м', number(0.1), { ...optional(item, 'depth'), parse: optNum }) : bind('Цвет (hex, необязательно)', text(), optional(item, 'color')),
         h('div.fields',
-          h('button.btn', { onclick: () => rotate(90) }, icon('rotateCw', 14, 2.2), 'Turn 90°'),
-          h('button.btn', { onclick: duplicate }, icon('duplicate', 14, 2.2), 'Duplicate')),
-        h('p.note', stairs ? 'Stairs climb in the direction of the arrow and reach the floor above; the floor above shows them faintly, to line its landing up.'
-          : 'The short line on the plan marks the front. Rotation 0° faces south (towards the bottom of the plan).')));
+          h('button.btn', { onclick: () => rotate(90) }, icon('rotateCw', 14, 2.2), 'Повернуть на 90°'),
+          h('button.btn', { onclick: duplicate }, icon('duplicate', 14, 2.2), 'Копия')),
+        h('p.note', stairs ? 'Лестница поднимается по стрелке до этажа выше; на верхнем этаже она слабо видна, чтобы совместить площадку.'
+          : 'Короткая черта на плане — фасад. Поворот 0° — лицом на юг (к низу плана).')));
     } else if (kind === 'opening') {
-      head(item.type || 'door', 'A gap or a window in a wall');
-      nodes.push(section('Opening',
-        bind('Type', choice([['door', 'Door'], ['open', 'Open passage'], ['window', 'Window']]), { ...prop(item, 'type', 'door'), event: 'change' }),
-        row(bind('From X', number(), { ...at(item, 'from', 0), parse: parseNum }), bind('From Z', number(), { ...at(item, 'from', 1), parse: parseNum })),
-        row(bind('To X', number(), { ...at(item, 'to', 0), parse: parseNum }), bind('To Z', number(), { ...at(item, 'to', 1), parse: parseNum })),
-        item.type === 'window' ? row(bind('Sill, m', number(), { ...prop(item, 'sill', 0.85), parse: parseNum }),
-          bind('Head, m', number(), { ...prop(item, 'head', 2.1), parse: parseNum })) : null,
-        h('p.note', 'Drag it along a wall, or onto another one: it snaps to the walls (hold ⌥ not to). Drag the dots at its ends to make it wider. Windows only show on the far walls; the walls facing the camera are cut away.')));
+      head(OPENING_RU[item.type || 'door'], 'Проём или окно в стене');
+      nodes.push(section('Проём',
+        bind('Тип', choice([['door', 'Дверь'], ['open', 'Открытый проём'], ['window', 'Окно']]), { ...prop(item, 'type', 'door'), event: 'change' }),
+        row(bind('Начало X', number(), { ...at(item, 'from', 0), parse: parseNum }), bind('Начало Z', number(), { ...at(item, 'from', 1), parse: parseNum })),
+        row(bind('Конец X', number(), { ...at(item, 'to', 0), parse: parseNum }), bind('Конец Z', number(), { ...at(item, 'to', 1), parse: parseNum })),
+        item.type === 'window' ? row(bind('Подоконник, м', number(), { ...prop(item, 'sill', 0.85), parse: parseNum }),
+          bind('Верх окна, м', number(), { ...prop(item, 'head', 2.1), parse: parseNum })) : null,
+        h('p.note', 'Двигайте вдоль стены или на другую: проём прилипает к стенам (⌥ отключает). Тяните точки на концах, чтобы сделать шире. Окна видны только на дальних стенах: ближние к камере срезаются.')));
     } else if (kind === 'scene') {
       head(item.name || item.id, `id: ${item.id}`);
       item.lights ||= {};
@@ -1559,15 +1583,15 @@ export async function bootEditor(root) {
           else item.lights[id] = { ...(item.lights[id] || {}), on: v === 'on' };
         },
       });
-      const tri = () => choice([['', 'Leave as is'], ['on', 'On'], ['off', 'Off']]);
-      nodes.push(section('Scene',
-        row(bind('Name', text(), prop(item, 'name', '')), bind('Icon', choice(SCENE_ICONS), { ...prop(item, 'icon', 'sun'), event: 'change' }))),
-      section('Lights',
-        bind('All lights (default)', tri(), { ...rule('*'), event: 'change' }),
+      const tri = () => choice([['', 'Не менять'], ['on', 'Вкл'], ['off', 'Выкл']]);
+      nodes.push(section('Сцена',
+        row(bind('Название', text(), prop(item, 'name', '')), bind('Значок', choice(labelled(SCENE_ICONS, ICON_RU)), { ...prop(item, 'icon', 'sun'), event: 'change' }))),
+      section('Свет и приборы',
+        bind('Весь свет (по умолчанию)', tri(), { ...rule('*'), event: 'change' }),
         doc.lights.map((l) => bind(`${l.name} · ${roomName(l.room)}`, tri(), { ...rule(l.id), event: 'change' })),
-        h('p.note', 'Brightness, temperature and colour per light are kept from the plan file; edit them there for fine control.')),
-      section('Air conditioners',
-        bind('All ACs', choice([['', 'Leave as is'], ['off', 'Turn off'], ['on', 'Turn on']]), {
+        h('p.note', 'Яркость, температура и цвет отдельных ламп берутся из файла плана; для тонкой настройки правьте их там.')),
+      section('Климат',
+        bind('Все кондиционеры', choice([['', 'Не менять'], ['off', 'Выключить'], ['on', 'Включить']]), {
           get: () => (item.acs?.['*']?.on === true ? 'on' : item.acs?.['*']?.on === false ? 'off' : ''),
           set: (v) => { item.acs ||= {}; if (v === '') delete item.acs['*']; else item.acs['*'] = { on: v === 'on' }; },
           event: 'change',
@@ -1715,7 +1739,7 @@ export async function bootEditor(root) {
     if (!valid) return;
     if (!isNative) {
       download();
-      toast('Browser preview: the plan was downloaded instead of applied');
+      toast('Режим браузера: план скачан, а не применён');
       return;
     }
     try {
@@ -1723,7 +1747,7 @@ export async function bootEditor(root) {
       dirty = false;
       validate();
       haptic('success');
-      toast(isPhone ? 'Saved' : 'Saved — the menu bar panel now shows this home');
+      toast(isPhone ? 'Сохранено' : 'Передано в карточку — подтвердите сохранение там');
     } catch (e) {
       toast(e.message, true);
     }
@@ -1739,7 +1763,7 @@ export async function bootEditor(root) {
     if (!isNative) { download(); return; }
     try {
       const r = await call('exportPlan', { config: doc });
-      if (r.ok) toast('Plan exported');
+      if (r.ok) toast('План экспортирован');
     } catch (e) { toast(e.message, true); }
   }
 
@@ -1748,19 +1772,19 @@ export async function bootEditor(root) {
       try {
         normalize(structuredClone(json));
       } catch (e) {
-        toast(`Not a valid plan: ${e.message}`, true);
+        toast(`Неверный план: ${e.message}`, true);
         return;
       }
       snapshot();
       doc = json;
       for (const key of Object.values(KEYS)) doc[key] ||= [];
       placeImplied(doc);
-      nameInput.value = doc.name || 'Home';
+      nameInput.value = doc.name || 'Дом';
       sel = { kind: 'home' };
       checkLevel();
       view = null;
       touch();
-      toast('Plan imported — review it and press “Save & apply”');
+      toast('План импортирован — проверьте его и нажмите «Сохранить»');
     };
     if (isNative) {
       try {
@@ -1771,7 +1795,7 @@ export async function bootEditor(root) {
     }
     const input = h('input', { type: 'file', accept: 'application/json,.json' });
     input.addEventListener('change', async () => {
-      try { load(JSON.parse(await input.files[0].text())); } catch (e) { toast(`Could not read the file: ${e.message}`, true); }
+      try { load(JSON.parse(await input.files[0].text())); } catch (e) { toast(`Не удалось прочитать файл: ${e.message}`, true); }
     });
     input.click();
   }
@@ -1836,49 +1860,49 @@ export async function bootEditor(root) {
   // (add, items, 3D, home) and the inspector as a sheet that rises when something is picked.
   function buildPhoneLayout() {
     const canvas = h('main.canvas');
-    const sheet = h('section.p-sheet', { 'aria-label': 'Details' });
-    const grip = h('div.p-grip', { role: 'button', 'aria-label': 'Resize details' }, h('span'));
+    const sheet = h('section.p-sheet', { 'aria-label': 'Свойства' });
+    const grip = h('div.p-grip', { role: 'button', 'aria-label': 'Изменить размер панели' }, h('span'));
     const scrim = h('div.p-scrim');
-    const listSheet = h('section.p-modal', { 'aria-label': 'Items' });
-    const addSheet = h('section.p-modal.p-add', { 'aria-label': 'Add' });
-    const confirmSheet = h('section.p-modal.p-confirm', { 'aria-label': 'Unsaved changes' });
-    const undoBtn = h('button.p-icon', { 'aria-label': 'Undo', onclick: () => { stepHistory(undo, redo); haptic('light'); } }, icon('undo', 19, 2.1));
-    const redoBtn = h('button.p-icon', { 'aria-label': 'Redo', onclick: () => { stepHistory(redo, undo); haptic('light'); } }, icon('redo', 19, 2.1));
+    const listSheet = h('section.p-modal', { 'aria-label': 'Объекты' });
+    const addSheet = h('section.p-modal.p-add', { 'aria-label': 'Добавить' });
+    const confirmSheet = h('section.p-modal.p-confirm', { 'aria-label': 'Несохранённые правки' });
+    const undoBtn = h('button.p-icon', { 'aria-label': 'Отменить', onclick: () => { stepHistory(undo, redo); haptic('light'); } }, icon('undo', 19, 2.1));
+    const redoBtn = h('button.p-icon', { 'aria-label': 'Повторить', onclick: () => { stepHistory(redo, undo); haptic('light'); } }, icon('redo', 19, 2.1));
     const doneBtn = h('button.p-save', { onclick: () => (dirty ? save() : close()) });
     const issue = h('div.p-issue');
-    const fitBtn = h('button.p-float', { 'aria-label': 'Show the whole floor', onclick: () => { reveal(); haptic('light'); } }, icon('fit', 18, 2));
+    const fitBtn = h('button.p-float', { 'aria-label': 'Показать весь этаж', onclick: () => { reveal(); haptic('light'); } }, icon('fit', 18, 2));
     const tool = (name, label, onclick) => h('button.p-tool', { onclick }, icon(name, 22, 1.9), h('span', label));
     const view3d = tool('box', '3D', () => setShow3D(!ui.show3D));
     const tools = h('nav.p-tools',
-      tool('plus', 'Add', () => openModal(addSheet)),
-      tool('list', 'Items', () => openModal(listSheet)),
+      tool('plus', 'Добавить', () => openModal(addSheet)),
+      tool('list', 'Объекты', () => openModal(listSheet)),
       view3d,
-      tool('home', 'Home', () => { select({ kind: 'home' }); setSheet('full'); }));
+      tool('home', 'Дом', () => { select({ kind: 'home' }); setSheet('full'); }));
 
     nameInput.setAttribute('enterkeyhint', 'done');
     nameInput.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') nameInput.blur(); });
     sidebar.classList.add('p-list');
-    listSheet.append(h('div.p-modal-head', h('b', 'Items'), h('button.p-text', { onclick: closeModals }, 'Done')), sidebar);
+    listSheet.append(h('div.p-modal-head', h('b', 'Объекты'), h('button.p-text', { onclick: closeModals }, 'Готово')), sidebar);
     const addables = [
       ...addable(),
-      ['level', 'layers', 'Floor', () => addLevel()],
-      ['scene', 'sparkles', 'Scene', () => add('scene')],
+      ['level', 'layers', 'Этаж', () => addLevel()],
+      ['scene', 'sparkles', 'Сцена', () => add('scene')],
     ];
-    addSheet.append(h('div.p-modal-head', h('b', 'Add to the plan'), h('button.p-text', { onclick: closeModals }, 'Cancel')),
+    addSheet.append(h('div.p-modal-head', h('b', 'Добавить на план'), h('button.p-text', { onclick: closeModals }, 'Отмена')),
       h('div.p-add-grid', addables.map(([, name, label, run]) => h('button.p-add-item', {
         onclick: () => { closeModals(); run(); haptic('light'); if (sel.kind !== 'level') setSheet('peek'); else setSheet('full'); },
       }, icon(name, 24, 1.8), h('span', label)))));
-    confirmSheet.append(h('div.p-modal-head', h('b', 'Unsaved changes')),
-      h('p.note', 'Save them before closing? Saved plans reach your paired computer too.'),
+    confirmSheet.append(h('div.p-modal-head', h('b', 'Несохранённые правки')),
+      h('p.note', 'Сохранить перед закрытием?'),
       h('div.p-confirm-actions',
-        h('button.btn.primary.wide', { onclick: async () => { closeModals(); await save(); if (!dirty) close(); } }, 'Save and close'),
-        h('button.btn.wide.danger', { onclick: () => { closeModals(); dirty = false; close(); } }, 'Discard changes'),
-        h('button.btn.wide', { onclick: closeModals }, 'Keep editing')));
+        h('button.btn.primary.wide', { onclick: async () => { closeModals(); await save(); if (!dirty) close(); } }, 'Сохранить и закрыть'),
+        h('button.btn.wide.danger', { onclick: () => { closeModals(); dirty = false; close(); } }, 'Отбросить правки'),
+        h('button.btn.wide', { onclick: closeModals }, 'Продолжить')));
 
     sheet.append(grip, inspector);
     canvas.append(plan, levelBar, emptyCard, h('div.p-preview', previewHost, previewToggle), issue, fitBtn, hint);
     const shell = h('div.editor.phone',
-      h('header.p-bar', h('button.p-icon', { 'aria-label': 'Close', onclick: requestClose }, icon('close', 20, 2.2)),
+      h('header.p-bar', h('button.p-icon', { 'aria-label': 'Закрыть', onclick: requestClose }, icon('close', 20, 2.2)),
         nameInput, undoBtn, redoBtn, doneBtn),
       canvas, tools, scrim, sheet, listSheet, addSheet, confirmSheet, toastEl);
     root.replaceChildren(shell);
@@ -1948,7 +1972,7 @@ export async function bootEditor(root) {
     function setShow3D(on) {
       ui.show3D = on;
       canvas.classList.toggle('show-3d', on);
-      view3d.replaceChildren(icon(on ? 'map' : 'box', 22, 1.9), h('span', on ? 'Plan' : '3D'));
+      view3d.replaceChildren(icon(on ? 'map' : 'box', 22, 1.9), h('span', on ? 'План' : '3D'));
       schedulePreview(0);
       haptic('light');
     }
@@ -2060,19 +2084,19 @@ export async function bootEditor(root) {
       headActions() {
         const nodes = [];
         if (sel.kind === 'furniture' || (sel.kind === 'light' && doc.lights[sel.index]?.type === 'strip')) {
-          nodes.push(h('button.p-icon', { 'aria-label': 'Turn 90°', onclick: () => { haptic('light'); rotate(90); } }, icon('rotateCw', 18, 2)));
+          nodes.push(h('button.p-icon', { 'aria-label': 'Повернуть на 90°', onclick: () => { haptic('light'); rotate(90); } }, icon('rotateCw', 18, 2)));
         }
         if (sel.index != null) {
-          nodes.push(h('button.p-icon', { 'aria-label': 'Duplicate', onclick: () => { haptic('light'); duplicate(); } }, icon('duplicate', 18, 2)));
+          nodes.push(h('button.p-icon', { 'aria-label': 'Копия', onclick: () => { haptic('light'); duplicate(); } }, icon('duplicate', 18, 2)));
           nodes.push(h('button.p-icon.danger', {
-            'aria-label': 'Remove', onclick: () => { haptic('medium'); remove(sel.kind, sel.index); setSheet('closed'); },
+            'aria-label': 'Удалить', onclick: () => { haptic('medium'); remove(sel.kind, sel.index); setSheet('closed'); },
           }, icon('trash', 18, 2)));
         }
-        nodes.push(h('button.p-icon', { 'aria-label': 'Close details', onclick: closeSheet }, icon('down', 20, 2.2)));
+        nodes.push(h('button.p-icon', { 'aria-label': 'Закрыть свойства', onclick: closeSheet }, icon('down', 20, 2.2)));
         return h('div.p-head-actions', nodes);
       },
       refresh() {
-        doneBtn.textContent = dirty ? 'Save' : 'Done';
+        doneBtn.textContent = dirty ? 'Сохранить' : 'Готово';
         doneBtn.classList.toggle('primary', dirty);
         doneBtn.disabled = dirty && !valid;
         undoBtn.disabled = !undo.length;
@@ -2101,7 +2125,7 @@ export async function bootEditor(root) {
     }
     doc = structuredClone(config);
     for (const key of Object.values(KEYS)) doc[key] ||= [];
-    nameInput.value = doc.name || 'Home';
+    nameInput.value = doc.name || 'Дом';
     checkLevel();
     if (sel.index != null && !doc[KEYS[sel.kind]]?.[sel.index]) sel = { kind: 'home' };
     if (sel.kind === 'level' && !levelList().some((l) => l.id === sel.id)) sel = { kind: 'home' };

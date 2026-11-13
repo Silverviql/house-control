@@ -42,7 +42,7 @@ export const SLAB = 0.3; // thickness of the floor between two levels, metres
 
 export function levelsOf(raw) {
   const list = Array.isArray(raw?.levels) ? raw.levels.filter((l) => l && typeof l.id === 'string' && l.id) : [];
-  return list.length ? list : [{ id: 'main', name: 'Ground floor' }];
+  return list.length ? list : [{ id: 'main', name: 'Первый этаж' }];
 }
 
 // The plan exactly as written on disk (the editor works on this form).

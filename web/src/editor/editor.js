@@ -870,16 +870,7 @@ export async function bootEditor(root) {
     doc.acs.forEach((a, i) => {
       if (!here('ac', a)) return;
       const rot = { north: 0, east: 90, south: 180, west: 270 }[a.wall] || 0;
-      if (a.type === 'floor') {
-        // Underfloor heating: a mark in the middle of the room it warms, not a unit on a wall.
-        kids.push(sv('g', {
-          class: `p-ac${isSel('ac', i) ? ' sel' : ''}`, 'data-kind': 'ac', 'data-index': i,
-          transform: `translate(${a.pos[0]} ${a.pos[1]})`,
-        }, big ? sv('circle', { r: 0.58, class: 'hit' }) : null,
-          sv('circle', { r: 0.3 }),
-          sv('path', { d: 'M-0.16 -0.1q0.08 -0.08 0.16 0t0.16 0M-0.16 0.08q0.08 -0.08 0.16 0t0.16 0', class: 'flow' })));
-        return;
-      }
+      if (a.type === 'floor') return; // drawn after the lamps, see below
       kids.push(sv('g', {
         class: `p-ac${isSel('ac', i) ? ' sel' : ''}`, 'data-kind': 'ac', 'data-index': i,
         transform: `translate(${a.pos[0]} ${a.pos[1]}) rotate(${rot})`,
@@ -928,6 +919,18 @@ export async function bootEditor(root) {
           sv('circle', { cx, cy: cz, r: name.length === 2 ? r : r * 0.8, class: `p-handle ${name}`, ...attrs }));
       }
     }
+    // Underfloor heating: a mark in the room it warms, not a unit on a wall. Drawn over the lamps,
+    // so a fan or a spot in the middle of a small bathroom cannot hide it or take its taps.
+    doc.acs.forEach((a, i) => {
+      if (a.type !== 'floor' || !here('ac', a)) return;
+      kids.push(sv('g', {
+        class: `p-ac floorheat${isSel('ac', i) ? ' sel' : ''}`, 'data-kind': 'ac', 'data-index': i,
+        transform: `translate(${a.pos[0]} ${a.pos[1]})`,
+      }, big ? sv('rect', { x: -0.6, y: -0.45, width: 1.2, height: 0.9, class: 'hit' }) : null,
+        sv('rect', { x: -0.34, y: -0.22, width: 0.68, height: 0.44, rx: 0.12 }),
+        sv('path', { d: 'M-0.2 -0.07q0.05 -0.07 0.1 0t0.1 0t0.1 0t0.1 0M-0.2 0.09q0.05 -0.07 0.1 0t0.1 0t0.1 0t0.1 0', class: 'waves' })));
+    });
+
     // The spots of a selected group and the corners of a selected line each get a handle of their own.
     const shaped = sel.kind === 'light' && doc.lights[sel.index];
     if (shaped && isShaped(shaped) && here('light', shaped)) {
@@ -973,9 +976,9 @@ export async function bootEditor(root) {
     if (!room) return;
     const [rx, rz, rw, rd] = room.rect;
     if (ac.type === 'floor') {
-      // Dropped in a room, it becomes that room's heating.
+      // The mark goes where it is dropped (it heats the whole room it lands in); it only stays inside that room.
       ac.room = room.id;
-      ac.pos = [fix(rx + rw / 2), fix(rz + rd / 2)];
+      ac.pos = [fix(clamp(round(x), rx + 0.2, rx + rw - 0.2)), fix(clamp(round(z), rz + 0.2, rz + rd - 0.2))];
       return;
     }
     const options = [
@@ -1547,7 +1550,7 @@ export async function bootEditor(root) {
             set: ([a, b]) => { item.min = a; item.max = b; },
             parse: (v) => { const m = /^(\d+)\s*-\s*(\d+)$/.exec(v.trim()); return m && +m[1] < +m[2] ? [+m[1], +m[2]] : undefined; },
           })),
-        h('p.note', floor ? 'Греет всю комнату: перетащите значок в другую комнату, чтобы перенести.' : 'При перетаскивании блок прилипает к ближайшей стене комнаты.')),
+        h('p.note', floor ? 'Греет всю комнату. Значок можно двигать куда удобно; если отпустить его в другой комнате, пол перейдёт туда.' : 'При перетаскивании блок прилипает к ближайшей стене комнаты.')),
       links.deviceSection(item, 'ac', linkHooks),
       links.sensorSection(item, linkHooks));
     } else if (kind === 'furniture') {

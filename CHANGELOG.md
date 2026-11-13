@@ -41,6 +41,9 @@ changes; the plan fields are in [docs/floor-plan.md](docs/floor-plan.md).
 - **Light lines:** a dot on every corner; add corners and separate runs, or make a line straight again.
 - **Appliances, underfloor heating, lamps behind a shared switch** in the inspector.
 - **Pieces of a room** (“Part of”), each room's **climate sensors**, and the **weather, sun and pressure** outside.
+- **Scenes** say what they do to each lamp (brightness, white temperature), each appliance (a blind open, closed or
+  open to a percentage; a vacuum cleaning or docked) and each AC or underfloor heating (on with a temperature, or off).
+- In Russian, with buttons for appliances and underfloor heating.
 
 ### Panel
 

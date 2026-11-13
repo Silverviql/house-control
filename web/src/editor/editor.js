@@ -1576,26 +1576,77 @@ export async function bootEditor(root) {
     } else if (kind === 'scene') {
       head(item.name || item.id, `id: ${item.id}`);
       item.lights ||= {};
-      const rule = (id) => ({
-        get: () => (item.lights[id]?.on === true ? 'on' : item.lights[id]?.on === false ? 'off' : ''),
+      item.acs ||= {};
+      // One rule of the scene: what it does to a lamp, an appliance, an AC. `map` is "lights" or "acs".
+      const state = (map, id) => ({
+        get: () => (item[map][id]?.on === true ? 'on' : item[map][id]?.on === false ? 'off' : ''),
         set: (v) => {
-          if (v === '') delete item.lights[id];
-          else item.lights[id] = { ...(item.lights[id] || {}), on: v === 'on' };
+          if (v === '') delete item[map][id];
+          else if (v === 'off') item[map][id] = { on: false }; // what it would be set to no longer matters
+          else item[map][id] = { ...(item[map][id] || {}), on: true };
         },
+        event: 'change',
       });
-      const tri = () => choice([['', 'Не менять'], ['on', 'Вкл'], ['off', 'Выкл']]);
+      // A value that goes with "on": left empty, the device keeps what it has.
+      const value = (map, id, field, { lo, hi, scale = 1 }) => ({
+        get: () => (item[map][id]?.[field] != null ? Math.round(item[map][id][field] * scale) : ''),
+        set: (v) => {
+          if (v === '') delete item[map][id][field];
+          else item[map][id][field] = clamp(v, lo, hi) / scale;
+        },
+        parse: optNum,
+        event: 'change',
+      });
+      const isOn = (map, id) => item[map][id]?.on === true;
+      const tri = (on = 'Вкл', off = 'Выкл') => choice([['', 'Не менять'], ['on', on], ['off', off]]);
+      const where = (d) => `${d.name || d.id} · ${roomName(d.room)}`;
+
+      const lamps = doc.lights.filter((l) => !APPLIANCE_TYPES.includes(l.type));
+      const appliances = doc.lights.filter((l) => APPLIANCE_TYPES.includes(l.type));
+      const lampRule = (l) => {
+        const caps = l.capabilities || [];
+        const extra = isOn('lights', l.id) && (caps.includes('brightness') || caps.includes('temp'));
+        return [
+          bind(where(l), tri(), state('lights', l.id)),
+          extra ? row(
+            caps.includes('brightness') ? bind('Яркость, %', number(5), value('lights', l.id, 'brightness', { lo: 5, hi: 100, scale: 100 })) : null,
+            caps.includes('temp') ? bind('Температура, K', number(100), value('lights', l.id, 'temp', { lo: 2200, hi: 6500 })) : null) : null,
+        ];
+      };
+      const applianceRule = (l) => {
+        if (l.type === 'blind') {
+          return [
+            bind(where(l), tri('Открыть', 'Закрыть'), state('lights', l.id)),
+            isOn('lights', l.id) ? bind('Открыть на, % (пусто — полностью)', number(5), value('lights', l.id, 'brightness', { lo: 5, hi: 100, scale: 100 })) : null,
+          ];
+        }
+        if (l.type === 'vacuum') return bind(where(l), tri('Начать уборку', 'Вернуть на базу'), state('lights', l.id));
+        return bind(where(l), tri(), state('lights', l.id));
+      };
+      const climateRule = (a) => {
+        const floor = a.type === 'floor';
+        return [
+          bind(where(a), tri('Включить', 'Выключить'), state('acs', a.id)),
+          isOn('acs', a.id) ? bind('Температура, °C (пусто — как есть)', number(1), value('acs', a.id, 'target', { lo: a.min ?? (floor ? 5 : 16), hi: a.max ?? (floor ? 35 : 30) })) : null,
+        ];
+      };
+      const wallACs = doc.acs.filter((a) => a.type !== 'floor');
+      const floors = doc.acs.filter((a) => a.type === 'floor');
+
       nodes.push(section('Сцена',
         row(bind('Название', text(), prop(item, 'name', '')), bind('Значок', choice(labelled(SCENE_ICONS, ICON_RU)), { ...prop(item, 'icon', 'sun'), event: 'change' }))),
-      section('Свет и приборы',
-        bind('Весь свет (по умолчанию)', tri(), { ...rule('*'), event: 'change' }),
-        doc.lights.map((l) => bind(`${l.name} · ${roomName(l.room)}`, tri(), { ...rule(l.id), event: 'change' })),
-        h('p.note', 'Яркость, температура и цвет отдельных ламп берутся из файла плана; для тонкой настройки правьте их там.')),
-      section('Климат',
-        bind('Все кондиционеры', choice([['', 'Не менять'], ['off', 'Выключить'], ['on', 'Включить']]), {
-          get: () => (item.acs?.['*']?.on === true ? 'on' : item.acs?.['*']?.on === false ? 'off' : ''),
-          set: (v) => { item.acs ||= {}; if (v === '') delete item.acs['*']; else item.acs['*'] = { on: v === 'on' }; },
-          event: 'change',
-        })));
+      section('Свет',
+        bind('Весь свет (по умолчанию)', tri(), state('lights', '*')),
+        lamps.map(lampRule),
+        h('p.note', '«Весь свет» действует на лампы, для которых ниже стоит «Не менять». Приборы и отопление он не трогает.')),
+      appliances.length ? section('Приборы',
+        appliances.map(applianceRule),
+        h('p.note', 'Прибор меняется, только если здесь выбрано действие.')) : null,
+      doc.acs.length ? section('Климат',
+        wallACs.length ? bind('Все кондиционеры (по умолчанию)', tri('Включить', 'Выключить'), state('acs', '*')) : null,
+        wallACs.map(climateRule),
+        floors.map(climateRule),
+        floors.length ? h('p.note', 'Тёплый пол меняется, только если для него выбрано действие: «Все кондиционеры» его не касается.') : null) : null);
     }
     const key = `${sel.kind}:${sel.index ?? sel.service ?? sel.id ?? ''}`;
     const same = key === inspector.dataset.key;
